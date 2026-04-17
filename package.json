@@ -1,0 +1,19 @@
+{
+  "name": "import-catalogue",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import:brands:product": "tsx --env-file=.env.local ./importCatalogue/expert-brands/sku-group/main.ts",
+    "import:brands:catalogue:parse": "tsx ./parseCsv/main.ts"
+  },
+  "dependencies": {
+    "concurrent-promise-queue": "^1.1.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/yargs": "^17.0.33",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
