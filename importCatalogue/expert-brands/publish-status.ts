@@ -1,8 +1,8 @@
-import { getEnvironments } from "../contentstack/api";
-import { Environment } from "../contentstack/types";
+import { getEnvironments } from "../contentstack/api.js";
+import { Environment } from "../contentstack/types.js";
 
-import { PublishDetails } from "./contentstack.types";
-import { BrandsLocale } from "./types";
+import { PublishDetails } from "./contentstack.types.js";
+import { BrandsLocale } from "./types.js";
 
 export type PublishAwareEntry = {
   publish_details?: PublishDetails | PublishDetails[] | null;
@@ -29,7 +29,10 @@ async function getEnvironmentUidByName(): Promise<Map<string, string>> {
 
       const map = new Map<string, string>();
       for (const environment of response.environments ?? []) {
-        map.set(String(environment.name).toLowerCase(), String(environment.uid));
+        map.set(
+          String(environment.name).toLowerCase(),
+          String(environment.uid),
+        );
       }
       return map;
     });
@@ -68,8 +71,9 @@ export async function isPublishedForTargets(
 
   return normalizePublishDetails(entry?.publish_details).some((detail) => {
     return (
-      targetEnvironmentIdentifiers.has(String(detail.environment).toLowerCase()) &&
-      String(detail.locale).toLowerCase() === targetLocale
+      targetEnvironmentIdentifiers.has(
+        String(detail.environment).toLowerCase(),
+      ) && String(detail.locale).toLowerCase() === targetLocale
     );
   });
 }

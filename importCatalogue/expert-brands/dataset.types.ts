@@ -1,4 +1,4 @@
-import { BrandsLocaleInput } from "./types";
+import { BrandsLocaleInput } from "./types.js";
 
 export type DatasetImage = {
   type: string;
@@ -16,6 +16,7 @@ type DatasetBenefit = {
   label: string;
   value: string;
   picto: string;
+  image?: string;
 };
 
 type DatasetColor = {

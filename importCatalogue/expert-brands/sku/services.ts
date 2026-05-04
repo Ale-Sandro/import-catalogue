@@ -4,30 +4,26 @@ import {
   publishEntry,
   unpublishEntry,
   updateEntry,
-} from "../../contentstack/api";
-import { EntryInput } from "../../contentstack/types";
+} from "../../contentstack/api.js";
+import { EntryInput } from "../../contentstack/types.js";
 
-import { Sku } from "../contentstack.types";
-import { DatasetSku, DatasetSkuGroup } from "../dataset.types";
+import { Sku } from "../contentstack.types.js";
+import { DatasetSku, DatasetSkuGroup } from "../dataset.types.js";
 import {
   buildPublishDebugSnapshot,
   isPublishedAnywhere,
   isPublishedForTargets,
   PublishAwareEntry,
-} from "../publish-status";
-import { BRAND_TERM, PUBLISH_ENVS } from "../config";
-import { BrandsLocale, normalizeLocaleAvailability } from "../types";
+} from "../publish-status.js";
+import { BRAND_TERM, PUBLISH_ENVS } from "../config.js";
+import { BrandsLocale, normalizeLocaleAvailability } from "../types.js";
 
-function normalizeTags(
-  value: string | string[] | null | undefined,
-): string[] {
+function normalizeTags(value: string | string[] | null | undefined): string[] {
   if (!value) {
     return [];
   }
   if (Array.isArray(value)) {
-    return value
-      .map((item) => String(item).trim())
-      .filter(Boolean);
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
   return value
     .split(",")
@@ -94,7 +90,10 @@ async function getExistingContentstackSku(locale: BrandsLocale, skuId: string) {
     },
   );
 
-  if (!(localizedResponse instanceof Error) && localizedResponse.entries.length) {
+  if (
+    !(localizedResponse instanceof Error) &&
+    localizedResponse.entries.length
+  ) {
     return {
       entry: localizedResponse.entries[0],
       localizedMatch: true,
@@ -113,7 +112,10 @@ async function getExistingContentstackSku(locale: BrandsLocale, skuId: string) {
     },
   );
 
-  if (!(anyLocaleResponse instanceof Error) && anyLocaleResponse.entries.length) {
+  if (
+    !(anyLocaleResponse instanceof Error) &&
+    anyLocaleResponse.entries.length
+  ) {
     return {
       entry: anyLocaleResponse.entries[0],
       localizedMatch: false,
@@ -181,13 +183,22 @@ export async function importSku(
       adaptedSku.locale_availability,
     );
   }
-  if (existingSku && existingSkuResult?.localizedMatch && options?.preserveImages) {
+  if (
+    existingSku &&
+    existingSkuResult?.localizedMatch &&
+    options?.preserveImages
+  ) {
     adaptedSku.images = existingSku.images;
   }
 
   let savedEntry;
   if (existingSku) {
-    savedEntry = await updateEntry<Sku>("sku", existingSku.uid, adaptedSku, locale);
+    savedEntry = await updateEntry<Sku>(
+      "sku",
+      existingSku.uid,
+      adaptedSku,
+      locale,
+    );
   } else {
     savedEntry = await createEntry<Sku>("sku", adaptedSku, locale);
   }
@@ -199,17 +210,23 @@ export async function importSku(
   if (options?.forceUnpublish) {
     if (existingSku && existingSkuPublishedOnTargets) {
       await unpublishEntry("sku", savedEntry.entry.uid, PUBLISH_ENVS, [locale]);
-      console.info("[CS] unpublished SKU because parent SKU_GROUP is unpublished", {
-        uid: savedEntry.entry.uid,
-        title: savedEntry.entry.title,
-        locale,
-      });
+      console.info(
+        "[CS] unpublished SKU because parent SKU_GROUP is unpublished",
+        {
+          uid: savedEntry.entry.uid,
+          title: savedEntry.entry.title,
+          locale,
+        },
+      );
     } else {
-      console.info("[CS] kept SKU unpublished because parent SKU_GROUP is unpublished", {
-        uid: savedEntry.entry.uid,
-        title: savedEntry.entry.title,
-        locale,
-      });
+      console.info(
+        "[CS] kept SKU unpublished because parent SKU_GROUP is unpublished",
+        {
+          uid: savedEntry.entry.uid,
+          title: savedEntry.entry.title,
+          locale,
+        },
+      );
     }
     return savedEntry.entry;
   }

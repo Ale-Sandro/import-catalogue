@@ -1,6 +1,6 @@
-import { ReferencedEntry } from "../contentstack/types";
+import { ReferencedEntry } from "../contentstack/types.js";
 
-import { SkuGroup } from "./contentstack.types";
+import { SkuGroup } from "./contentstack.types.js";
 
 export const BRAND_LOCALES = [
   "en",
@@ -90,10 +90,7 @@ export function normalizeLocaleAvailability(
   return Array.from(normalizedLocales);
 }
 
-export type SkuGroupInput = Omit<
-  SkuGroup,
-  "skus" | "representative_sku"
-> & {
+export type SkuGroupInput = Omit<SkuGroup, "skus" | "representative_sku"> & {
   skus: ReferencedEntry[];
   representative_sku: ReferencedEntry[];
 };

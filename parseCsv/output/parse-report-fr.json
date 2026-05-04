@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-04-22T11:40:00.417Z",
+  "source": {
+    "csvPath": "/Users/ALESSANDRO/workspace/import-catalogue/parseCsv/csv/fr-FR_contentstack-exporter (5).csv",
+    "rows": 1000
+  },
+  "output": {
+    "reportPath": "./parseCsv/output/parse-report-fr.json",
+    "dumpPath": "./parseCsv/output/parsed-catalogue-fr.ndjson"
+  },
+  "summary": {
+    "skuGroups": 462,
+    "skus": 1000,
+    "rowsSkipped": 0,
+    "duplicateSkuIds": 0,
+    "errors": 0,
+    "errorsCaptured": 0,
+    "errorsTruncated": false
+  },
+  "errors": []
+}

@@ -8,7 +8,7 @@ import {
   Notice,
   PublishEntryBody,
   UnpublishEntryBody,
-} from "./types";
+} from "./types.js";
 
 type Params = Record<string, string | number | boolean | undefined>;
 

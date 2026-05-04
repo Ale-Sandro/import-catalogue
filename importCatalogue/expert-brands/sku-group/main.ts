@@ -1,11 +1,16 @@
 import { ConcurrentPromiseQueue } from "concurrent-promise-queue";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import yargs from "yargs/yargs";
 
-import { DatasetSkuGroup } from "../dataset.types";
-import { BrandsLocale, normalizeLocale } from "../types";
-import { importSkuGroup } from "./services";
-import { EXCLUDED_SUPERMODEL_CODES } from "./exclusions";
+import { DatasetSkuGroup } from "../dataset.types.js";
+import {
+  BrandsLocale,
+  normalizeLocale,
+  normalizeLocaleAvailability,
+} from "../types.js";
+import { importSkuGroup } from "./services.js";
+import { EXCLUDED_SUPERMODEL_CODES } from "./exclusions.js";
 
 const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
@@ -34,6 +39,64 @@ function parseListArg(value: unknown): string[] | undefined {
   return parsed.length ? parsed : undefined;
 }
 
+function findNdjsonFiles(outputDir: string): string[] {
+  return readdirSync(outputDir)
+    .filter((fileName) => /^parsed-catalogue.*\.ndjson$/i.test(fileName.trim()))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function resolveDefaultNdjsonPath(args: Record<string, unknown>): string {
+  const explicitPath = String(
+    args["ndjson-path"] ?? args.ndjsonPath ?? "",
+  ).trim();
+  if (explicitPath) {
+    return explicitPath;
+  }
+
+  const outputDir = path.join(process.cwd(), "parseCsv/output");
+  const ndjsonFiles = findNdjsonFiles(outputDir);
+  if (!ndjsonFiles.length) {
+    throw new Error(
+      `No parsed catalogue NDJSON found in ${outputDir}. Use --ndjson-path to specify a file explicitly.`,
+    );
+  }
+
+  if (ndjsonFiles.length === 1) {
+    return path.join(outputDir, ndjsonFiles[0]);
+  }
+
+  throw new Error(
+    `Multiple NDJSON files found in ${outputDir}: ${ndjsonFiles.join(", ")}. Use --ndjson-path to choose one.`,
+  );
+}
+
+function extractLocaleTokenFromNdjsonPath(ndjsonPath: string): string {
+  const baseName = path.basename(ndjsonPath, path.extname(ndjsonPath));
+  const match = baseName.match(/(?:^|[-_])([a-z]{2}(?:[-_][a-z]{2})?)$/i);
+  if (!match) {
+    return "en-US";
+  }
+  return match[1].replace(/_/g, "-");
+}
+
+function resolveImportLocaleConfig(ndjsonPath: string): {
+  localeToken: string;
+  localeOverrideRaw: string;
+  localeOverride: BrandsLocale;
+  localeAvailabilityRaw: string[];
+} {
+  const localeToken = extractLocaleTokenFromNdjsonPath(ndjsonPath);
+  const localeOverride = normalizeLocale(localeToken);
+  const localeAvailabilityRaw = normalizeLocaleAvailability([localeToken]);
+
+  return {
+    localeToken,
+    localeOverrideRaw: localeToken,
+    localeOverride,
+    localeAvailabilityRaw,
+  };
+}
+
 function applyLocaleOverrides(
   skuGroup: DatasetSkuGroup,
   localeAvailability: string[],
@@ -50,7 +113,7 @@ function applyLocaleOverrides(
   };
 }
 
-const reduceBurst = hasCliFlag("reduce-burst");
+const reduceBurst = true;
 const queue = new ConcurrentPromiseQueue({
   maxNumberOfConcurrentPromises: reduceBurst ? 1 : 2,
 });
@@ -70,8 +133,6 @@ const skipPublishIfUnpublished = hasCliFlag("skip-publish-if-unpublished");
 const publishIfPublishedAnywhere = hasCliFlag("publish-if-published-anywhere");
 const debugPublishStatus = hasCliFlag("debug-publish-status");
 let preserveImagesForCategories: string[] | undefined;
-const DEFAULT_NDJSON_LOCALE = "en_US";
-const DEFAULT_NDJSON_LOCALE_AVAILABILITY = ["us"];
 
 type SkuGroupTask = {
   label: string;
@@ -240,7 +301,8 @@ function collectMissingTaxonomy(fileName: string, details: unknown) {
       taxonomyTerms.add(termUid);
       missingTaxonomyTerms.set(taxonomy, taxonomyTerms);
 
-      const fileTerms = missingTaxonomyByFile.get(fileName) ?? new Set<string>();
+      const fileTerms =
+        missingTaxonomyByFile.get(fileName) ?? new Set<string>();
       fileTerms.add(termUid);
       missingTaxonomyByFile.set(fileName, fileTerms);
     }
@@ -330,7 +392,9 @@ async function importSkuGroupFile(
   }
 
   if (skipped > 0) {
-    console.info(`Skipping ${skipped} SKU(s) without images for file: ${fileName}`);
+    console.info(
+      `Skipping ${skipped} SKU(s) without images for file: ${fileName}`,
+    );
   }
 
   if (!skuGroupWithImages.skus.length) {
@@ -365,20 +429,15 @@ async function importSkuGroupFile(
 }
 
 (async () => {
-  const yargs = require("yargs/yargs");
   const args = yargs(rawCliArgs).argv as Record<string, unknown>;
 
-  const ndjsonPath = String(args["ndjson-path"] ?? args.ndjsonPath ?? "").trim();
-  if (!ndjsonPath) {
-    throw new Error("Missing required --ndjson-path=<path>");
-  }
-
-  const localeOverrideRaw = args.locale
-    ? String(args.locale).trim()
-    : DEFAULT_NDJSON_LOCALE;
-  const localeAvailabilityRaw =
-    parseListArg(args["locale-availability"] ?? args.localeAvailability) ??
-    DEFAULT_NDJSON_LOCALE_AVAILABILITY;
+  const ndjsonPath = resolveDefaultNdjsonPath(args);
+  const {
+    localeToken,
+    localeOverrideRaw,
+    localeOverride,
+    localeAvailabilityRaw,
+  } = resolveImportLocaleConfig(ndjsonPath);
   const reportPath = String(
     args["report-path"] ??
       args.reportPath ??
@@ -388,14 +447,23 @@ async function importSkuGroupFile(
   preserveImagesForCategories = parseListArg(
     args["preserve-images-for-categories"] ?? args.preserveImagesForCategories,
   )?.map((value) => value.toLowerCase());
-
-  const localeOverride = normalizeLocale(localeOverrideRaw);
   const groups = readNdjson<DatasetSkuGroup>(ndjsonPath);
+  console.info("[importCatalogue] import source", {
+    ndjsonPath,
+    localeToken,
+    locale: localeOverride,
+    localeAvailability: localeAvailabilityRaw,
+    reduceBurst,
+  });
   const skuGroupTasks: SkuGroupTask[] = groups.map((group, index) => {
     const labelId = group.id ?? group.itemGroupId ?? String(index);
     return {
       label: `${localeOverrideRaw}_${labelId}.ndjson`,
-      data: applyLocaleOverrides(group, localeAvailabilityRaw, localeOverrideRaw),
+      data: applyLocaleOverrides(
+        group,
+        localeAvailabilityRaw,
+        localeOverrideRaw,
+      ),
       localeOverride,
     };
   });

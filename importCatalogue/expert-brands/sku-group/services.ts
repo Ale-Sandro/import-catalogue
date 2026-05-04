@@ -3,24 +3,24 @@ import {
   getEntries,
   publishEntry,
   updateEntry,
-} from "../../contentstack/api";
-import { EntryInput } from "../../contentstack/types";
+} from "../../contentstack/api.js";
+import { EntryInput } from "../../contentstack/types.js";
 
-import { importSku } from "../sku/services";
-import { SkuGroup } from "../contentstack.types";
-import { DatasetSkuGroup } from "../dataset.types";
+import { importSku } from "../sku/services.js";
+import { SkuGroup } from "../contentstack.types.js";
+import { DatasetSkuGroup } from "../dataset.types.js";
 import {
   buildPublishDebugSnapshot,
   isPublishedForTargets,
   isPublishedAnywhere,
   PublishAwareEntry,
-} from "../publish-status";
-import { BRAND_TERM, PUBLISH_ENVS } from "../config";
+} from "../publish-status.js";
+import { BRAND_TERM, PUBLISH_ENVS } from "../config.js";
 import {
   BrandsLocale,
   SkuGroupInput,
   normalizeLocaleAvailability,
-} from "../types";
+} from "../types.js";
 
 const REDUCE_BURST_DELAY_MS = 300;
 
@@ -40,16 +40,12 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function normalizeTags(
-  value: string | string[] | null | undefined,
-): string[] {
+function normalizeTags(value: string | string[] | null | undefined): string[] {
   if (!value) {
     return [];
   }
   if (Array.isArray(value)) {
-    return value
-      .map((item) => String(item).trim())
-      .filter(Boolean);
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
   return value
     .split(",")
@@ -136,7 +132,9 @@ async function adaptSkuGroup(
       });
       return savedSku;
     } catch {
-      console.info(`Retry import SKU ${sku.skuId} for SKU Group ${skuGroup.id}`);
+      console.info(
+        `Retry import SKU ${sku.skuId} for SKU Group ${skuGroup.id}`,
+      );
       return importSku(sku, skuGroup, locale, {
         preserveImages: preserveImagesForThisGroup,
         skipPublishIfUnpublished: options?.skipPublishIfUnpublished,
@@ -169,10 +167,10 @@ async function adaptSkuGroup(
 
   const categoryTerms = options?.preserveCategories
     ? []
-    : skuGroup.categories?.map((category) => ({
+    : (skuGroup.categories?.map((category) => ({
         taxonomy_uid: "category",
         term_uid: adaptTermUid(category),
-      })) ?? [];
+      })) ?? []);
   const firstPricedSku = savedSkus.find(
     (sku) => sku.price !== null && sku.price !== undefined,
   );
@@ -240,7 +238,10 @@ async function getExistingContentstackSkuGroup(
     },
   );
 
-  if (!(localizedResponse instanceof Error) && localizedResponse.entries.length) {
+  if (
+    !(localizedResponse instanceof Error) &&
+    localizedResponse.entries.length
+  ) {
     return {
       entry: localizedResponse.entries[0],
       localizedMatch: true,
@@ -259,7 +260,10 @@ async function getExistingContentstackSkuGroup(
     },
   );
 
-  if (!(anyLocaleResponse instanceof Error) && anyLocaleResponse.entries.length) {
+  if (
+    !(anyLocaleResponse instanceof Error) &&
+    anyLocaleResponse.entries.length
+  ) {
     return {
       entry: anyLocaleResponse.entries[0],
       localizedMatch: false,
