@@ -114,3 +114,28 @@ export function isPublishedAnywhere(
 ): boolean {
   return normalizePublishDetails(entry?.publish_details).length > 0;
 }
+
+export async function getPublishedEnvironmentNames(
+  entry: PublishAwareEntry | undefined,
+): Promise<string[]> {
+  const publishDetails = normalizePublishDetails(entry?.publish_details);
+  if (!publishDetails.length) {
+    return [];
+  }
+
+  const environmentUidByName = await getEnvironmentUidByName();
+  const environmentNameByUid = new Map<string, string>();
+
+  for (const [name, uid] of environmentUidByName.entries()) {
+    environmentNameByUid.set(uid.toLowerCase(), name);
+  }
+
+  const names = new Set<string>();
+
+  for (const detail of publishDetails) {
+    const rawEnvironment = String(detail.environment).toLowerCase();
+    names.add(environmentNameByUid.get(rawEnvironment) ?? rawEnvironment);
+  }
+
+  return Array.from(names.values());
+}

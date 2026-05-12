@@ -4,10 +4,10 @@
   "type": "module",
   "scripts": {
     "import:brands:product": "tsx --env-file=.env.local ./importCatalogue/expert-brands/sku-group/main.ts",
+    "import:brands:product:diff": "tsx ./importCatalogue/expert-brands/sku-group/checkDiff.ts",
     "import:brands:catalogue:parse": "tsx ./parseCsv/main.ts"
   },
   "dependencies": {
-    "concurrent-promise-queue": "^1.1.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

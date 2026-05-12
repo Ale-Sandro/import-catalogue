@@ -22,7 +22,7 @@ export interface Image {
 
 export interface Sku {
   title: string;
-  locale_availability: string[];
+  locale_availability?: string[];
   sku_id?: string;
   sku_code?: string;
   tags?: string[];

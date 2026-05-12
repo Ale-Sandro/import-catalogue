@@ -28,7 +28,6 @@ type DatasetColor = {
 export type DatasetSku = {
   skuId: string;
   skuCode: string;
-  localeAvailability: BrandsLocaleInput[];
   locale: BrandsLocaleInput;
   productImages: DatasetImage[] | null;
   contextImages: DatasetImage[] | null;

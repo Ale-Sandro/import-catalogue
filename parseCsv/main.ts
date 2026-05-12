@@ -10,6 +10,10 @@ import { fileURLToPath } from "node:url";
 import yargs from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
 
+// ============================================================================
+// Types
+// ============================================================================
+
 // Types internes pour l'etape 1 (parsing uniquement).
 type ParsedImage = {
   type: string;
@@ -46,7 +50,6 @@ type ParsedSku = {
   productImages: ParsedImage[] | null;
   colors: ParsedColor[] | null;
   locale: string;
-  localeAvailability: string[];
   price: number | null;
 };
 
@@ -133,12 +136,45 @@ const PORTABLE_COLUMNS: Record<LogicalColumn, string | null> = {
   brand: "brand",
   catchline: "catchline",
   functionalities: "functionalities",
-  materialAndCare: null,
+  materialAndCare: "composition",
   benefits: "benefits",
 };
 
+// ============================================================================
+// CSV resolution and raw parsing
+// ============================================================================
+
 function normalizeLocaleToken(value: string): string {
   return value.trim().toLowerCase().replace(/_/g, "-");
+}
+
+const PORTABLE_OUTPUT_LOCALE_ALIASES: Record<string, string> = {
+  en: "en",
+  "en-gb": "en",
+  "en-us": "en-us",
+  "en-ca": "en-ca",
+  fr: "fr",
+  "fr-fr": "fr",
+  "fr-ca": "fr-ca",
+  de: "de",
+  "de-de": "de",
+  es: "es-es",
+  "es-es": "es-es",
+  it: "it-it",
+  "it-it": "it-it",
+};
+
+function normalizePortableOutputLocale(value: string): string {
+  const normalized = PORTABLE_OUTPUT_LOCALE_ALIASES[normalizeLocaleToken(value)];
+  if (!normalized) {
+    throw new Error(
+      `Unsupported locale '${value}'. Expected one of: ${Object.keys(
+        PORTABLE_OUTPUT_LOCALE_ALIASES,
+      ).join(", ")}`,
+    );
+  }
+
+  return normalized;
 }
 
 function findPortableCsvFiles(csvDir: string): string[] {
@@ -154,7 +190,33 @@ function getPortableCsvLocale(fileName: string): string | null {
   if (!match) {
     return null;
   }
-  return normalizeLocaleToken(match[1]);
+
+  try {
+    return normalizePortableOutputLocale(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function resolvePortableOutputLocale(
+  csvPath: string,
+  args: Record<string, unknown>,
+): string {
+  const rawCsvLocale = String(
+    args["csv-locale"] ?? args.csvLocale ?? args.locale ?? "",
+  ).trim();
+  if (rawCsvLocale) {
+    return normalizePortableOutputLocale(rawCsvLocale);
+  }
+
+  const csvFileLocale = getPortableCsvLocale(path.basename(csvPath));
+  if (!csvFileLocale) {
+    throw new Error(
+      `Unable to infer locale from CSV '${csvPath}'. Expected a file name like 'fr-FR_contentstack-exporter.csv' or pass --csv-locale explicitly.`,
+    );
+  }
+
+  return csvFileLocale;
 }
 
 function resolveDefaultCsvPath(
@@ -179,7 +241,7 @@ function resolveDefaultCsvPath(
   ).trim();
 
   if (rawCsvLocale) {
-    const localeToken = normalizeLocaleToken(rawCsvLocale);
+    const localeToken = normalizePortableOutputLocale(rawCsvLocale);
     const matchingFiles = portableCsvFiles.filter((fileName) =>
       getPortableCsvLocale(fileName) === localeToken,
     );
@@ -276,6 +338,10 @@ function parseCsv(content: string): string[][] {
 
   return rows;
 }
+
+// ============================================================================
+// Generic parsing helpers
+// ============================================================================
 
 function isJsonLike(raw: string): boolean {
   const trimmed = raw.trim();
@@ -403,6 +469,10 @@ function buildSkuGroupUrl(
   return `p/${slug}/${itemGroupId}/${varianceCode}`;
 }
 
+// ============================================================================
+// Column parsers
+// ============================================================================
+
 // Parse la colonne "images" vers productImages.
 function parseImages(
   raw: string,
@@ -519,6 +589,24 @@ function parseMaterialAndCare(
   row: number,
   errors: ParseError[],
 ): ParsedTextEntry[] | null {
+  if (!raw || !raw.trim()) {
+    return null;
+  }
+
+  if (!isJsonLike(raw)) {
+    const entries = splitPipeSeparatedEntries(raw)
+      .map((entry) => {
+        const [title, value] = splitDelimitedParts(entry, ":", 2);
+        return {
+          title: title.trim(),
+          value: value.trim(),
+        };
+      })
+      .filter((entry) => entry.title || entry.value);
+
+    return normalizeArray(entries);
+  }
+
   const items = getItems(raw, row, "composition", errors);
   const entries = items
     .map((item) => (typeof item === "string" ? item.trim() : ""))
@@ -753,6 +841,10 @@ function parseBrand(
   return raw.trim();
 }
 
+// ============================================================================
+// Output writers
+// ============================================================================
+
 // Ecriture NDJSON: 1 ligne = 1 skuGroup (pratique pour debug).
 async function writeNdjson(filePath: string, groups: ParsedSkuGroup[]) {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -767,19 +859,26 @@ async function writeNdjson(filePath: string, groups: ParsedSkuGroup[]) {
   });
 }
 
+// ============================================================================
+// Main flow
+// ============================================================================
+
 // Main: parse CSV -> regrouper -> dump ndjson + report json.
 async function run() {
   const args = yargs(hideBin(process.argv).filter((arg) => arg !== "--"))
     .parseSync() as Record<string, unknown>;
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const csvPath = resolveDefaultCsvPath(currentDir, args);
+  const outputLocale = resolvePortableOutputLocale(csvPath, args);
 
-  const defaultReportPath = path.join(currentDir, "output/parse-report.json");
+  const defaultReportPath = path.join(
+    currentDir,
+    `output/parse-report-${outputLocale}.json`,
+  );
   const defaultDumpPath = path.join(
     currentDir,
-    "output/parsed-catalogue.ndjson",
+    `output/parsed-catalogue-${outputLocale}.ndjson`,
   );
-
-  const csvPath = resolveDefaultCsvPath(currentDir, args);
   const reportPath = String(
     args["report-path"] ?? args.reportPath ?? defaultReportPath,
   );
@@ -923,8 +1022,7 @@ async function run() {
         errors,
       ),
       colors: parseColors(getValue(row, "colors"), rowNumber, errors),
-      locale: "",
-      localeAvailability: [],
+      locale: outputLocale,
       price: parsePrice(
         getValue(row, "price"),
         rowNumber,
@@ -950,7 +1048,11 @@ async function run() {
           rowNumber,
           errors,
         ),
-        materialAndCare: null,
+        materialAndCare: parseMaterialAndCare(
+          getValue(row, "materialAndCare"),
+          rowNumber,
+          errors,
+        ),
         benefits: parseBenefits(
           getValue(row, "benefits"),
           rowNumber,

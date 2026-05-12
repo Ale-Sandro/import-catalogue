@@ -20,24 +20,22 @@ cp .env.example .env.local
 
 ```bash
 pnpm import:brands:product -- \
-  --ndjson-path ./data/parsed-catalogue.ndjson \
-  --locale en_GB \
-  --locale-availability en
+  --ndjson-path ./parseCsv/output/parsed-catalogue-fr.ndjson
+```
+
+## Commande diff seule
+
+```bash
+pnpm import:brands:product:diff -- \
+  --ndjson-path ./parseCsv/output/parsed-catalogue-fr.ndjson
 ```
 
 ## Flags disponibles
 
-- `--ndjson-path` obligatoire
-- `--locale`
-- `--locale-availability`
-- `--reduce-burst`
-- `--preserve-images`
-- `--preserve-categories`
-- `--skip-publish-if-unpublished`
-- `--publish-if-published-anywhere`
-- `--debug-publish-status`
-- `--preserve-images-for-categories a,b,c`
+- `--ndjson-path`
 - `--report-path /path/to/import-report.json`
+- `--changed-ndjson-path /path/to/changed-catalogue.ndjson`
+- `--diff-report-path /path/to/diff-report.json`
 
 ## Limites volontaires
 
