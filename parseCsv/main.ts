@@ -1,11 +1,16 @@
 import {
+  createReadStream,
   createWriteStream,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
-  readFileSync,
+  rmSync,
   writeFileSync,
+  WriteStream,
 } from "node:fs";
+import { once } from "node:events";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import yargs from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
@@ -118,6 +123,56 @@ type ParseReport = {
   };
   errors: ParseError[];
 };
+
+type BucketRow = {
+  rowNumber: number;
+  values: string[];
+};
+
+type HeaderContext = {
+  logicalColumnIndexes: number[];
+  physicalColumnName: (column: LogicalColumn) => string | null;
+};
+
+type ParseState = {
+  outputLocale: string;
+  headerContext: HeaderContext;
+  pushError: (error: ParseError) => void;
+  errorSink: ParseError[];
+  rowsSkipped: number;
+  duplicateSkuIds: number;
+  totalSkus: number;
+  skuGroups: number;
+  seenSkuIds: Set<string>;
+};
+
+const LOGICAL_COLUMNS: LogicalColumn[] = [
+  "groupKey",
+  "groupId",
+  "skuId",
+  "skuCode",
+  "title",
+  "description",
+  "designedFor",
+  "sizeLabel",
+  "images",
+  "colors",
+  "price",
+  "itemGroupId",
+  "varianceCode",
+  "brand",
+  "catchline",
+  "functionalities",
+  "materialAndCare",
+  "benefits",
+];
+
+const LOGICAL_COLUMN_INDEX = Object.fromEntries(
+  LOGICAL_COLUMNS.map((column, index) => [column, index]),
+) as Record<LogicalColumn, number>;
+
+const REQUIRED_COLUMNS = ["item_group_id", "sku_id", "model_id"];
+const PARSE_BUCKET_COUNT = 64;
 
 const PORTABLE_COLUMNS: Record<LogicalColumn, string | null> = {
   groupKey: "model_id",
@@ -278,65 +333,280 @@ function truncate(value: string, maxLength = 200): string {
   return `${value.slice(0, maxLength)}…`;
 }
 
-// Parser CSV simple avec gestion des guillemets et BOM.
-function parseCsv(content: string): string[][] {
-  const rows: string[][] = [];
+// Parse le CSV en streaming pour eviter de charger tout le fichier en RAM.
+async function* streamCsvRows(filePath: string): AsyncGenerator<string[]> {
+  const stream = createReadStream(filePath, { encoding: "utf-8" });
   let row: string[] = [];
   let field = "";
   let inQuotes = false;
-  let i = 0;
+  let isFirstChunk = true;
+  let skipNextLineFeed = false;
 
-  if (content.charCodeAt(0) === 0xfeff) {
-    content = content.slice(1);
-  }
+  const flushRow = (): string[] | null => {
+    row.push(field);
+    field = "";
+    if (row.some((value) => value.trim().length)) {
+      const completedRow = row;
+      row = [];
+      return completedRow;
+    }
+    row = [];
+    return null;
+  };
 
-  while (i < content.length) {
-    const char = content[i];
-    if (char === '"') {
-      if (inQuotes && content[i + 1] === '"') {
-        field += '"';
-        i += 2;
+  for await (let chunk of stream) {
+    if (isFirstChunk) {
+      isFirstChunk = false;
+      if (chunk.charCodeAt(0) === 0xfeff) {
+        chunk = chunk.slice(1);
+      }
+    }
+
+    for (let i = 0; i < chunk.length; i += 1) {
+      const char = chunk[i];
+
+      if (skipNextLineFeed) {
+        skipNextLineFeed = false;
+        if (char === "\n") {
+          continue;
+        }
+      }
+
+      if (char === '"') {
+        if (inQuotes && chunk[i + 1] === '"') {
+          field += '"';
+          i += 1;
+          continue;
+        }
+        inQuotes = !inQuotes;
         continue;
       }
-      inQuotes = !inQuotes;
-      i += 1;
-      continue;
-    }
 
-    if (!inQuotes && char === ",") {
-      row.push(field);
-      field = "";
-      i += 1;
-      continue;
-    }
-
-    if (!inQuotes && (char === "\n" || char === "\r")) {
-      row.push(field);
-      field = "";
-      if (row.some((value) => value.trim().length)) {
-        rows.push(row);
+      if (!inQuotes && char === ",") {
+        row.push(field);
+        field = "";
+        continue;
       }
-      row = [];
-      if (char === "\r" && content[i + 1] === "\n") {
-        i += 2;
-      } else {
-        i += 1;
-      }
-      continue;
-    }
 
-    field += char;
-    i += 1;
+      if (!inQuotes && char === "\r") {
+        const completedRow = flushRow();
+        if (completedRow) {
+          yield completedRow;
+        }
+        skipNextLineFeed = true;
+        continue;
+      }
+
+      if (!inQuotes && char === "\n") {
+        const completedRow = flushRow();
+        if (completedRow) {
+          yield completedRow;
+        }
+        continue;
+      }
+
+      field += char;
+    }
   }
 
   if (field.length || row.length) {
-    row.push(field);
-    if (row.some((value) => value.trim().length)) {
-      rows.push(row);
+    const completedRow = flushRow();
+    if (completedRow) {
+      yield completedRow;
+    }
+  }
+}
+
+function createErrorCollector(maxErrors: number): {
+  errors: ParseError[];
+  errorSink: ParseError[];
+  pushError: (error: ParseError) => void;
+  getTotalErrors: () => number;
+} {
+  const errors: ParseError[] = [];
+  let totalErrors = 0;
+
+  const pushError = (error: ParseError) => {
+    totalErrors += 1;
+    if (errors.length < maxErrors) {
+      errors.push(error);
+    }
+  };
+
+  const errorSink = new Proxy(errors, {
+    get(target, property, receiver) {
+      if (property === "push") {
+        return (...items: ParseError[]) => {
+          for (const item of items) {
+            pushError(item);
+          }
+          return target.length;
+        };
+      }
+
+      return Reflect.get(target, property, receiver);
+    },
+  }) as ParseError[];
+
+  return {
+    errors,
+    errorSink,
+    pushError,
+    getTotalErrors: () => totalErrors,
+  };
+}
+
+function createHeaderContext(header: string[]): HeaderContext {
+  const headerIndex = new Map<string, number>();
+  header.forEach((name, index) => headerIndex.set(name.trim(), index));
+
+  for (const column of REQUIRED_COLUMNS) {
+    if (!headerIndex.has(column)) {
+      throw new Error(`Missing column '${column}' in CSV header.`);
     }
   }
 
-  return rows;
+  return {
+    logicalColumnIndexes: LOGICAL_COLUMNS.map((column) => {
+      const physicalColumn = PORTABLE_COLUMNS[column];
+      if (!physicalColumn) {
+        return -1;
+      }
+      return headerIndex.get(physicalColumn) ?? -1;
+    }),
+    physicalColumnName: (column: LogicalColumn) => PORTABLE_COLUMNS[column],
+  };
+}
+
+function extractLogicalValues(row: string[], headerContext: HeaderContext): string[] {
+  return headerContext.logicalColumnIndexes.map((index) =>
+    index === -1 ? "" : String(row[index] ?? ""),
+  );
+}
+
+function getLogicalValue(values: string[], column: LogicalColumn): string {
+  return String(values[LOGICAL_COLUMN_INDEX[column]] ?? "");
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function serializeJsonLine(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+async function writeLine(stream: WriteStream, line: string): Promise<void> {
+  if (stream.write(line)) {
+    return;
+  }
+
+  await once(stream, "drain");
+}
+
+async function closeWriteStream(stream: WriteStream): Promise<void> {
+  stream.end();
+  await once(stream, "finish");
+}
+
+async function bucketCsvRows(params: {
+  csvPath: string;
+  bucketDir: string;
+}): Promise<{
+  bucketPaths: string[];
+  sourceRows: number;
+  headerContext: HeaderContext;
+}> {
+  const bucketStreams = new Map<number, WriteStream>();
+  const bucketPaths = new Set<string>();
+  let headerContext: HeaderContext | null = null;
+  let rowNumber = 0;
+  let sourceRows = 0;
+
+  try {
+    for await (const row of streamCsvRows(params.csvPath)) {
+      rowNumber += 1;
+
+      if (rowNumber === 1) {
+        headerContext = createHeaderContext(row);
+        continue;
+      }
+
+      if (!headerContext) {
+        throw new Error("CSV header could not be read.");
+      }
+
+      sourceRows += 1;
+      const values = extractLogicalValues(row, headerContext);
+      const groupKey = getLogicalValue(values, "groupKey").trim();
+      const bucketIndex = groupKey
+        ? hashString(groupKey) % PARSE_BUCKET_COUNT
+        : 0;
+      const bucketPath = path.join(params.bucketDir, `bucket-${bucketIndex}.jsonl`);
+      let bucketStream = bucketStreams.get(bucketIndex);
+      if (!bucketStream) {
+        bucketStream = createWriteStream(bucketPath, { encoding: "utf-8" });
+        bucketStreams.set(bucketIndex, bucketStream);
+        bucketPaths.add(bucketPath);
+      }
+
+      const bucketRow: BucketRow = {
+        rowNumber,
+        values,
+      };
+      await writeLine(bucketStream, `${serializeJsonLine(bucketRow)}\n`);
+    }
+  } finally {
+    await Promise.all(
+      Array.from(bucketStreams.values()).map((stream) => closeWriteStream(stream)),
+    );
+  }
+
+  if (!headerContext) {
+    throw new Error("CSV file is empty.");
+  }
+
+  return {
+    bucketPaths: Array.from(bucketPaths).sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    sourceRows,
+    headerContext,
+  };
+}
+
+async function* streamBucketRows(bucketPath: string): AsyncGenerator<BucketRow> {
+  const input = createReadStream(bucketPath, { encoding: "utf-8" });
+  const reader = createInterface({
+    input,
+    crlfDelay: Infinity,
+  });
+
+  let lineNumber = 0;
+  for await (const line of reader) {
+    lineNumber += 1;
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      yield JSON.parse(trimmed) as BucketRow;
+    } catch (error) {
+      throw new Error(
+        `Invalid bucket JSON in ${bucketPath} at line ${lineNumber}: ${truncate(
+          trimmed,
+          400,
+        )}`,
+        { cause: error },
+      );
+    }
+  }
 }
 
 // ============================================================================
@@ -845,18 +1115,199 @@ function parseBrand(
 // Output writers
 // ============================================================================
 
-// Ecriture NDJSON: 1 ligne = 1 skuGroup (pratique pour debug).
-async function writeNdjson(filePath: string, groups: ParsedSkuGroup[]) {
+// Ouvre un stream NDJSON pour ecrire les skuGroups au fil de l'eau.
+function createNdjsonWriteStream(filePath: string): WriteStream {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  await new Promise<void>((resolve, reject) => {
-    const stream = createWriteStream(filePath, { encoding: "utf-8" });
-    stream.on("error", reject);
-    stream.on("finish", resolve);
-    for (const group of groups) {
-      stream.write(`${JSON.stringify(group)}\n`);
+  return createWriteStream(filePath, { encoding: "utf-8" });
+}
+
+async function writeGroupToNdjson(
+  stream: WriteStream,
+  group: ParsedSkuGroup,
+): Promise<void> {
+  await writeLine(stream, `${serializeJsonLine(group)}\n`);
+}
+
+function processBucketRow(
+  bucketRow: BucketRow,
+  groups: Map<string, ParsedSkuGroup>,
+  state: ParseState,
+) {
+  const { rowNumber, values } = bucketRow;
+  const getValue = (column: LogicalColumn): string => getLogicalValue(values, column);
+  const physicalColumnName = state.headerContext.physicalColumnName;
+  const skuGroupId = getValue("groupKey").trim();
+  const groupId = getValue("groupId").trim() || skuGroupId;
+  const skuId = getValue("skuId").trim();
+
+  if (!skuGroupId) {
+    state.rowsSkipped += 1;
+    state.pushError({
+      row: rowNumber,
+      column: physicalColumnName("groupKey") ?? "groupKey",
+      message: "Missing skuGroupId.",
+    });
+    return;
+  }
+
+  if (!groupId) {
+    state.rowsSkipped += 1;
+    state.pushError({
+      row: rowNumber,
+      column: physicalColumnName("groupId") ?? "groupId",
+      message: "Missing sku group id.",
+    });
+    return;
+  }
+
+  if (!skuId) {
+    state.rowsSkipped += 1;
+    state.pushError({
+      row: rowNumber,
+      column: physicalColumnName("skuId") ?? "skuId",
+      message: "Missing skuId.",
+    });
+    return;
+  }
+
+  if (state.seenSkuIds.has(skuId)) {
+    state.rowsSkipped += 1;
+    state.duplicateSkuIds += 1;
+    state.pushError({
+      row: rowNumber,
+      column: "skuId",
+      message: "Duplicate skuId encountered, row skipped.",
+      value: skuId,
+    });
+    return;
+  }
+  state.seenSkuIds.add(skuId);
+
+  const title = getValue("title").trim();
+  if (!title) {
+    state.pushError({
+      row: rowNumber,
+      column: "title",
+      message: "Missing title.",
+    });
+  }
+
+  const skuCode = getValue("skuCode").trim();
+  const itemGroupId = getValue("itemGroupId").trim() || null;
+  const sku: ParsedSku = {
+    skuId,
+    skuCode,
+    title,
+    description: getValue("description").trim() || null,
+    designedFor: getValue("designedFor").trim() || null,
+    sizeLabel: getValue("sizeLabel").trim() || null,
+    productImages: parseImages(
+      getValue("images"),
+      rowNumber,
+      title,
+      state.errorSink,
+    ),
+    colors: parseColors(
+      getValue("colors"),
+      rowNumber,
+      state.errorSink,
+    ),
+    locale: state.outputLocale,
+    price: parsePrice(
+      getValue("price"),
+      rowNumber,
+      skuCode,
+      state.errorSink,
+    ),
+  };
+
+  let group = groups.get(skuGroupId);
+  if (!group) {
+    group = {
+      id: groupId,
+      itemGroupId,
+      varianceCode: getValue("varianceCode").trim() || null,
+      title,
+      brand: parseBrand(getValue("brand"), rowNumber, state.errorSink),
+      catchline: getValue("catchline").trim() || null,
+      url: null,
+      skus: [],
+      functionalities: parseFunctionalities(
+        getValue("functionalities"),
+        rowNumber,
+        state.errorSink,
+      ),
+      materialAndCare: parseMaterialAndCare(
+        getValue("materialAndCare"),
+        rowNumber,
+        state.errorSink,
+      ),
+      benefits: parseBenefits(
+        getValue("benefits"),
+        rowNumber,
+        state.errorSink,
+      ),
+      categories: null,
+    };
+    group.url = buildSkuGroupUrl(
+      group.title,
+      group.itemGroupId,
+      group.varianceCode,
+    );
+    groups.set(skuGroupId, group);
+  } else {
+    if (title && group.title && group.title !== title) {
+      state.pushError({
+        row: rowNumber,
+        column: "title",
+        message: `SkuGroup title mismatch for skuGroupId ${skuGroupId}.`,
+        value: truncate(title),
+      });
     }
-    stream.end();
-  });
+    if (group.id !== groupId) {
+      state.pushError({
+        row: rowNumber,
+        column: physicalColumnName("groupId") ?? "groupId",
+        message: `SkuGroup id mismatch for grouping key ${skuGroupId}.`,
+        value: truncate(groupId),
+      });
+    }
+    if (!group.url) {
+      group.url = buildSkuGroupUrl(
+        group.title,
+        group.itemGroupId,
+        group.varianceCode,
+      );
+    }
+  }
+
+  group.skus.push(sku);
+  state.totalSkus += 1;
+}
+
+async function parseBucketsToNdjson(params: {
+  bucketPaths: string[];
+  dumpPath: string;
+  state: ParseState;
+}) {
+  const dumpStream = createNdjsonWriteStream(params.dumpPath);
+
+  try {
+    for (const bucketPath of params.bucketPaths) {
+      const groups = new Map<string, ParsedSkuGroup>();
+
+      for await (const bucketRow of streamBucketRows(bucketPath)) {
+        processBucketRow(bucketRow, groups, params.state);
+      }
+
+      params.state.skuGroups += groups.size;
+      for (const group of groups.values()) {
+        await writeGroupToNdjson(dumpStream, group);
+      }
+    }
+  } finally {
+    await closeWriteStream(dumpStream);
+  }
 }
 
 // ============================================================================
@@ -886,221 +1337,52 @@ async function run() {
     args["dump-path"] ?? args.dumpPath ?? defaultDumpPath,
   );
   const maxErrors = Number(args["max-errors"] ?? args.maxErrors ?? 200);
+  mkdirSync(path.join(currentDir, "output"), { recursive: true });
+  const bucketsDir = mkdtempSync(
+    path.join(currentDir, "output/parse-buckets-"),
+  );
 
-  const raw = readFileSync(csvPath, "utf-8");
-  const rows = parseCsv(raw);
-  if (!rows.length) {
-    throw new Error("CSV file is empty.");
-  }
+  const {
+    errors,
+    errorSink,
+    pushError,
+    getTotalErrors,
+  } = createErrorCollector(maxErrors);
 
-  // Index des colonnes par nom pour acces rapide.
-  const header = rows[0];
-  const headerIndex = new Map<string, number>();
-  header.forEach((name, index) => headerIndex.set(name.trim(), index));
+  let sourceRows = 0;
+  let parseState: ParseState | null = null;
 
-  const columnMap = PORTABLE_COLUMNS;
+  try {
+    const bucketed = await bucketCsvRows({
+      csvPath,
+      bucketDir: bucketsDir,
+    });
+    sourceRows = bucketed.sourceRows;
 
-  const physicalColumnName = (column: LogicalColumn): string | null =>
-    columnMap[column];
-
-  // Colonnes minimales pour lier SKU <-> SKU Group.
-  const requiredColumns = ["item_group_id", "sku_id", "model_id"];
-  for (const column of requiredColumns) {
-    if (!headerIndex.has(column)) {
-      throw new Error(`Missing column '${column}' in CSV header.`);
-    }
-  }
-
-  const errors: ParseError[] = [];
-  let totalErrors = 0;
-  let rowsSkipped = 0;
-  let duplicateSkuIds = 0;
-  let totalSkus = 0;
-
-  const groups = new Map<string, ParsedSkuGroup>();
-  const seenSkuIds = new Set<string>();
-
-  // Helper: recupere la valeur d'une colonne par nom.
-  const getValue = (row: string[], column: LogicalColumn): string => {
-    const physicalColumn = physicalColumnName(column);
-    if (!physicalColumn) {
-      return "";
-    }
-    const index = headerIndex.get(physicalColumn);
-    if (index === undefined) {
-      return "";
-    }
-    return String(row[index] ?? "");
-  };
-
-  // Helper: garde un max d'erreurs pour eviter un report trop gros.
-  const pushError = (error: ParseError) => {
-    totalErrors += 1;
-    if (errors.length < maxErrors) {
-      errors.push(error);
-    }
-  };
-
-  for (let i = 1; i < rows.length; i += 1) {
-    const row = rows[i];
-    if (!row || row.length === 0) {
-      continue;
-    }
-
-    const rowNumber = i + 1;
-    const skuGroupId = getValue(row, "groupKey").trim();
-    const groupId = getValue(row, "groupId").trim() || skuGroupId;
-    const skuId = getValue(row, "skuId").trim();
-
-    if (!skuGroupId) {
-      rowsSkipped += 1;
-      pushError({
-        row: rowNumber,
-        column: physicalColumnName("groupKey") ?? "groupKey",
-        message: "Missing skuGroupId.",
-      });
-      continue;
-    }
-
-    if (!groupId) {
-      rowsSkipped += 1;
-      pushError({
-        row: rowNumber,
-        column: physicalColumnName("groupId") ?? "groupId",
-        message: "Missing sku group id.",
-      });
-      continue;
-    }
-
-    if (!skuId) {
-      rowsSkipped += 1;
-      pushError({
-        row: rowNumber,
-        column: physicalColumnName("skuId") ?? "skuId",
-        message: "Missing skuId.",
-      });
-      continue;
-    }
-
-    // Un skuId doit etre unique.
-    if (seenSkuIds.has(skuId)) {
-      rowsSkipped += 1;
-      duplicateSkuIds += 1;
-      pushError({
-        row: rowNumber,
-        column: "skuId",
-        message: "Duplicate skuId encountered, row skipped.",
-        value: skuId,
-      });
-      continue;
-    }
-    seenSkuIds.add(skuId);
-
-    // Construction du SKU (locale vide, prix via fixedPricings si present).
-    const title = getValue(row, "title").trim();
-    if (!title) {
-      pushError({
-        row: rowNumber,
-        column: "title",
-        message: "Missing title.",
-      });
-    }
-
-    const skuCode = getValue(row, "skuCode").trim();
-    const itemGroupId = getValue(row, "itemGroupId").trim() || null;
-    const sku: ParsedSku = {
-      skuId,
-      skuCode,
-      title,
-      description: getValue(row, "description").trim() || null,
-      designedFor: getValue(row, "designedFor").trim() || null,
-      sizeLabel: getValue(row, "sizeLabel").trim() || null,
-      productImages: parseImages(
-        getValue(row, "images"),
-        rowNumber,
-        title,
-        errors,
-      ),
-      colors: parseColors(getValue(row, "colors"), rowNumber, errors),
-      locale: outputLocale,
-      price: parsePrice(
-        getValue(row, "price"),
-        rowNumber,
-        skuCode,
-        errors,
-      ),
+    parseState = {
+      outputLocale,
+      headerContext: bucketed.headerContext,
+      pushError,
+      errorSink,
+      rowsSkipped: 0,
+      duplicateSkuIds: 0,
+      totalSkus: 0,
+      skuGroups: 0,
+      seenSkuIds: new Set<string>(),
     };
 
-    // Creation ou recuperation du SKU Group.
-    let group = groups.get(skuGroupId);
-    if (!group) {
-      group = {
-        id: groupId,
-        itemGroupId,
-        varianceCode: getValue(row, "varianceCode").trim() || null,
-        title: title,
-        brand: parseBrand(getValue(row, "brand"), rowNumber, errors),
-        catchline: getValue(row, "catchline").trim() || null,
-        url: null,
-        skus: [],
-        functionalities: parseFunctionalities(
-          getValue(row, "functionalities"),
-          rowNumber,
-          errors,
-        ),
-        materialAndCare: parseMaterialAndCare(
-          getValue(row, "materialAndCare"),
-          rowNumber,
-          errors,
-        ),
-        benefits: parseBenefits(
-          getValue(row, "benefits"),
-          rowNumber,
-          errors,
-        ),
-        categories: null,
-      };
-      group.url = buildSkuGroupUrl(
-        group.title,
-        group.itemGroupId,
-        group.varianceCode,
-      );
-      groups.set(skuGroupId, group);
-    } else {
-      // Si le titre change pour un meme skuGroupId, on log.
-      if (title && group.title && group.title !== title) {
-        pushError({
-          row: rowNumber,
-          column: "title",
-          message: `SkuGroup title mismatch for skuGroupId ${skuGroupId}.`,
-          value: truncate(title),
-        });
-      }
-      if (group.id !== groupId) {
-        pushError({
-          row: rowNumber,
-          column: physicalColumnName("groupId") ?? "groupId",
-          message: `SkuGroup id mismatch for grouping key ${skuGroupId}.`,
-          value: truncate(groupId),
-        });
-      }
-      if (!group.url) {
-        group.url = buildSkuGroupUrl(
-          group.title,
-          group.itemGroupId,
-          group.varianceCode,
-        );
-      }
-    }
-
-    group.skus.push(sku);
-    totalSkus += 1;
+    await parseBucketsToNdjson({
+      bucketPaths: bucketed.bucketPaths,
+      dumpPath,
+      state: parseState,
+    });
+  } finally {
+    rmSync(bucketsDir, { recursive: true, force: true });
   }
 
-  const skuGroups = Array.from(groups.values());
-
-  // Dump NDJSON pour debug (1 ligne par skuGroup).
-  await writeNdjson(dumpPath, skuGroups);
+  if (!parseState) {
+    throw new Error("Parse state was not initialized.");
+  }
 
   // Report JSON avec resume + erreurs.
   mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -1108,20 +1390,20 @@ async function run() {
     generatedAt: new Date().toISOString(),
     source: {
       csvPath,
-      rows: rows.length - 1,
+      rows: sourceRows,
     },
     output: {
       reportPath,
       dumpPath,
     },
     summary: {
-      skuGroups: skuGroups.length,
-      skus: totalSkus,
-      rowsSkipped,
-      duplicateSkuIds,
-      errors: totalErrors,
+      skuGroups: parseState.skuGroups,
+      skus: parseState.totalSkus,
+      rowsSkipped: parseState.rowsSkipped,
+      duplicateSkuIds: parseState.duplicateSkuIds,
+      errors: getTotalErrors(),
       errorsCaptured: errors.length,
-      errorsTruncated: totalErrors > errors.length,
+      errorsTruncated: getTotalErrors() > errors.length,
     },
     errors,
   };
