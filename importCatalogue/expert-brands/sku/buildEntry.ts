@@ -1,7 +1,7 @@
 import { EntryInput } from "../../contentstack/types.js";
 import { Sku } from "../contentstack.types.js";
 import { DatasetSku, DatasetSkuGroup } from "../dataset.types.js";
-import { BRAND_TERM } from "../config.js";
+import { buildBrandTerm } from "../brandTerm.js";
 import { buildTags } from "./buildTags.js";
 
 export function buildEntry(
@@ -28,6 +28,6 @@ export function buildEntry(
     description: sku.description || undefined,
     price: sku.price || undefined,
     tags: buildTags(sku),
-    taxonomies: [BRAND_TERM],
+    taxonomies: [buildBrandTerm(skuGroup.brand)],
   };
 }

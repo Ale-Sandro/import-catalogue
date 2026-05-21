@@ -14,6 +14,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import yargs from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
+import { normalizeBrandTermUid } from "../importCatalogue/expert-brands/brandTerm.js";
 
 // ============================================================================
 // Types
@@ -1096,8 +1097,9 @@ function parseBrand(
   if (!raw || !raw.trim()) {
     return null;
   }
+  const normalizeBrand = (value: string) => normalizeBrandTermUid(value);
   if (!isJsonLike(raw)) {
-    return raw.trim();
+    return normalizeBrand(raw);
   }
   const parsed = parseJson<{ entries?: { name?: string } }>(
     raw,
@@ -1106,9 +1108,9 @@ function parseBrand(
     errors,
   );
   if (parsed?.entries?.name) {
-    return String(parsed.entries.name);
+    return normalizeBrand(String(parsed.entries.name));
   }
-  return raw.trim();
+  return normalizeBrand(raw);
 }
 
 // ============================================================================

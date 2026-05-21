@@ -1,6 +1,6 @@
 import { EntryInput } from "../../contentstack/types.js";
 import { DatasetSkuGroup } from "../dataset.types.js";
-import { BRAND_TERM } from "../config.js";
+import { buildBrandTerm } from "../brandTerm.js";
 import { normalizeLocaleAvailability, SkuGroupInput, BrandsLocale } from "../types.js";
 import { importSku } from "../sku/import.js";
 import { sleep } from "../shared/sleep.js";
@@ -51,6 +51,7 @@ export async function buildEntry(
     taxonomy_uid: "category",
     term_uid: normalizeCategory(category),
   })) ?? [];
+  const brandTerm = buildBrandTerm(skuGroup.brand);
   const firstPricedSku = savedSkus.find(
     (sku) => sku.price !== null && sku.price !== undefined,
   );
@@ -72,7 +73,7 @@ export async function buildEntry(
         _content_type_uid: "sku",
       },
     ],
-    taxonomies: [...categoryTerms, BRAND_TERM],
+    taxonomies: [...categoryTerms, brandTerm],
     url: skuGroup.url || undefined,
     slug: skuGroup.slug || undefined,
     weight: skuGroup.weight || undefined,
