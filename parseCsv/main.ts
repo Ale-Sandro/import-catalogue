@@ -92,7 +92,8 @@ type LogicalColumn =
   | "catchline"
   | "functionalities"
   | "materialAndCare"
-  | "benefits";
+  | "benefits"
+  | "categories";
 
 // Erreurs "soft" pour continuer le parsing en cas de probleme.
 type ParseError = {
@@ -166,6 +167,7 @@ const LOGICAL_COLUMNS: LogicalColumn[] = [
   "functionalities",
   "materialAndCare",
   "benefits",
+  "categories",
 ];
 
 const LOGICAL_COLUMN_INDEX = Object.fromEntries(
@@ -194,6 +196,7 @@ const PORTABLE_COLUMNS: Record<LogicalColumn, string | null> = {
   functionalities: "functionalities",
   materialAndCare: "composition",
   benefits: "benefits",
+  categories: "brand_tags",
 };
 
 // ============================================================================
@@ -221,7 +224,8 @@ const PORTABLE_OUTPUT_LOCALE_ALIASES: Record<string, string> = {
 };
 
 function normalizePortableOutputLocale(value: string): string {
-  const normalized = PORTABLE_OUTPUT_LOCALE_ALIASES[normalizeLocaleToken(value)];
+  const normalized =
+    PORTABLE_OUTPUT_LOCALE_ALIASES[normalizeLocaleToken(value)];
   if (!normalized) {
     throw new Error(
       `Unsupported locale '${value}'. Expected one of: ${Object.keys(
@@ -298,8 +302,8 @@ function resolveDefaultCsvPath(
 
   if (rawCsvLocale) {
     const localeToken = normalizePortableOutputLocale(rawCsvLocale);
-    const matchingFiles = portableCsvFiles.filter((fileName) =>
-      getPortableCsvLocale(fileName) === localeToken,
+    const matchingFiles = portableCsvFiles.filter(
+      (fileName) => getPortableCsvLocale(fileName) === localeToken,
     );
 
     if (!matchingFiles.length) {
@@ -479,7 +483,10 @@ function createHeaderContext(header: string[]): HeaderContext {
   };
 }
 
-function extractLogicalValues(row: string[], headerContext: HeaderContext): string[] {
+function extractLogicalValues(
+  row: string[],
+  headerContext: HeaderContext,
+): string[] {
   return headerContext.logicalColumnIndexes.map((index) =>
     index === -1 ? "" : String(row[index] ?? ""),
   );
@@ -549,7 +556,10 @@ async function bucketCsvRows(params: {
       const bucketIndex = groupKey
         ? hashString(groupKey) % PARSE_BUCKET_COUNT
         : 0;
-      const bucketPath = path.join(params.bucketDir, `bucket-${bucketIndex}.jsonl`);
+      const bucketPath = path.join(
+        params.bucketDir,
+        `bucket-${bucketIndex}.jsonl`,
+      );
       let bucketStream = bucketStreams.get(bucketIndex);
       if (!bucketStream) {
         bucketStream = createWriteStream(bucketPath, { encoding: "utf-8" });
@@ -565,7 +575,9 @@ async function bucketCsvRows(params: {
     }
   } finally {
     await Promise.all(
-      Array.from(bucketStreams.values()).map((stream) => closeWriteStream(stream)),
+      Array.from(bucketStreams.values()).map((stream) =>
+        closeWriteStream(stream),
+      ),
     );
   }
 
@@ -582,7 +594,9 @@ async function bucketCsvRows(params: {
   };
 }
 
-async function* streamBucketRows(bucketPath: string): AsyncGenerator<BucketRow> {
+async function* streamBucketRows(
+  bucketPath: string,
+): AsyncGenerator<BucketRow> {
   const input = createReadStream(bucketPath, { encoding: "utf-8" });
   const reader = createInterface({
     input,
@@ -972,6 +986,18 @@ function parseBenefits(
   return normalizeArray(benefits);
 }
 
+function parseCategories(raw: string): string[] | null {
+  if (!raw || !raw.trim()) {
+    return null;
+  }
+
+  const categories = splitPipeSeparatedEntries(raw)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  return normalizeArray(categories);
+}
+
 function parsePrice(
   raw: string,
   row: number,
@@ -1136,7 +1162,8 @@ function processBucketRow(
   state: ParseState,
 ) {
   const { rowNumber, values } = bucketRow;
-  const getValue = (column: LogicalColumn): string => getLogicalValue(values, column);
+  const getValue = (column: LogicalColumn): string =>
+    getLogicalValue(values, column);
   const physicalColumnName = state.headerContext.physicalColumnName;
   const skuGroupId = getValue("groupKey").trim();
   const groupId = getValue("groupId").trim() || skuGroupId;
@@ -1209,18 +1236,9 @@ function processBucketRow(
       title,
       state.errorSink,
     ),
-    colors: parseColors(
-      getValue("colors"),
-      rowNumber,
-      state.errorSink,
-    ),
+    colors: parseColors(getValue("colors"), rowNumber, state.errorSink),
     locale: state.outputLocale,
-    price: parsePrice(
-      getValue("price"),
-      rowNumber,
-      skuCode,
-      state.errorSink,
-    ),
+    price: parsePrice(getValue("price"), rowNumber, skuCode, state.errorSink),
   };
 
   let group = groups.get(skuGroupId);
@@ -1244,12 +1262,8 @@ function processBucketRow(
         rowNumber,
         state.errorSink,
       ),
-      benefits: parseBenefits(
-        getValue("benefits"),
-        rowNumber,
-        state.errorSink,
-      ),
-      categories: null,
+      benefits: parseBenefits(getValue("benefits"), rowNumber, state.errorSink),
+      categories: parseCategories(getValue("categories")),
     };
     group.url = buildSkuGroupUrl(
       group.title,
@@ -1280,6 +1294,9 @@ function processBucketRow(
         group.itemGroupId,
         group.varianceCode,
       );
+    }
+    if (!group.categories?.length) {
+      group.categories = parseCategories(getValue("categories"));
     }
   }
 
@@ -1318,8 +1335,9 @@ async function parseBucketsToNdjson(params: {
 
 // Main: parse CSV -> regrouper -> dump ndjson + report json.
 async function run() {
-  const args = yargs(hideBin(process.argv).filter((arg) => arg !== "--"))
-    .parseSync() as Record<string, unknown>;
+  const args = yargs(
+    hideBin(process.argv).filter((arg) => arg !== "--"),
+  ).parseSync() as Record<string, unknown>;
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const csvPath = resolveDefaultCsvPath(currentDir, args);
   const outputLocale = resolvePortableOutputLocale(csvPath, args);
@@ -1344,12 +1362,8 @@ async function run() {
     path.join(currentDir, "output/parse-buckets-"),
   );
 
-  const {
-    errors,
-    errorSink,
-    pushError,
-    getTotalErrors,
-  } = createErrorCollector(maxErrors);
+  const { errors, errorSink, pushError, getTotalErrors } =
+    createErrorCollector(maxErrors);
 
   let sourceRows = 0;
   let parseState: ParseState | null = null;

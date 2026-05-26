@@ -5,6 +5,7 @@ import { buildTasks } from "./tasks/buildTasks.js";
 import { getNdjsonPath } from "./getNdjsonPath.js";
 import { getLatestPath } from "./getLatestPath.js";
 import { getLocaleConfig } from "./getLocaleConfig.js";
+import { readNdjson } from "./diff/readNdjson.js";
 import { runDiff } from "./diff/runDiff.js";
 import { updateLatest } from "./diff/updateLatest.js";
 import { getChangedPath } from "./diff/getChangedPath.js";
@@ -13,6 +14,8 @@ import { importFile } from "./tasks/importFile.js";
 import { formatError } from "./report/formatError.js";
 import { recordError } from "./report/recordError.js";
 import { saveReport } from "./report/saveReport.js";
+import { DatasetSkuGroup } from "../dataset.types.js";
+import { filterExcludedGroups } from "./exclusions/filterGroups.js";
 
 const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
@@ -47,7 +50,12 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
       ),
   );
 
+  const rawCurrentGroups = readNdjson<DatasetSkuGroup>(ndjsonPath);
+  const { includedGroups: importableGroups, excludedGroups } =
+    filterExcludedGroups(rawCurrentGroups);
+
   const { changedGroups, currentGroups, report } = runDiff({
+    currentGroups: importableGroups,
     currentPath: ndjsonPath,
     latestPath,
     changedPath,
@@ -62,6 +70,9 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
     localeToken,
     locale: localeOverride,
     localeAvailability,
+    rawSkuGroups: rawCurrentGroups.length,
+    excludedSkuGroups: excludedGroups.length,
+    importableSkuGroups: importableGroups.length,
     reduceBurst,
   });
   console.info("[importCatalogue] diff summary", report.summary);
@@ -163,7 +174,7 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
   });
 
   if (importErrors.length === 0) {
-    updateLatest(ndjsonPath, latestPath);
+    updateLatest(currentGroups, latestPath);
     console.info("[importCatalogue] latest snapshot updated", {
       latestPath,
       importedSkuGroups: skuGroupTasks.length,

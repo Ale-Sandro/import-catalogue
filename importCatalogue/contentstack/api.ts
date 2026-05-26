@@ -194,24 +194,6 @@ export function updateEntry<T>(
   });
 }
 
-export function deleteEntry(
-  contentTypeUid: ContentTypeUid,
-  entryUid: string,
-  locale: string,
-  allLocalized: boolean = false,
-) {
-  const { headers, url } = buildRequest(
-    `/content_types/${contentTypeUid}/entries/${entryUid}`,
-    locale,
-  );
-  url.searchParams.set("delete_all_localized", String(allLocalized));
-
-  return requestJson<Notice>(url.toString(), {
-    method: "DELETE",
-    headers,
-  });
-}
-
 export function publishEntry(
   contentTypeUid: ContentTypeUid,
   entryUid: string,

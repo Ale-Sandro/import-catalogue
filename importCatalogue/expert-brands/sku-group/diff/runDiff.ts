@@ -7,6 +7,7 @@ import { writeJson } from "./writeJson.js";
 import { writeNdjson } from "./writeNdjson.js";
 
 export function runDiff(params: {
+  currentGroups: DatasetSkuGroup[];
   currentPath: string;
   latestPath: string;
   changedPath: string;
@@ -16,7 +17,7 @@ export function runDiff(params: {
   currentGroups: DatasetSkuGroup[];
   report: SkuGroupDiffReport;
 } {
-  const currentGroups = readNdjson<DatasetSkuGroup>(params.currentPath);
+  const currentGroups = params.currentGroups;
 
   let latestGroups: DatasetSkuGroup[] = [];
   try {

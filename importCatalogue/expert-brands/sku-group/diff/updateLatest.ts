@@ -1,7 +1,6 @@
-import { copyFileSync, mkdirSync } from "node:fs";
-import path from "node:path";
+import { DatasetSkuGroup } from "../../dataset.types.js";
+import { writeNdjson } from "./writeNdjson.js";
 
-export function updateLatest(currentPath: string, latestPath: string) {
-  mkdirSync(path.dirname(latestPath), { recursive: true });
-  copyFileSync(currentPath, latestPath);
+export function updateLatest(currentGroups: DatasetSkuGroup[], latestPath: string) {
+  writeNdjson(latestPath, currentGroups);
 }

@@ -1,6 +1,5 @@
 import { DatasetSkuGroup } from "../../dataset.types.js";
 import { BrandsLocale } from "../../types.js";
-import { isExcludedSupermodel } from "../exclusions.js";
 import { filterSkusWithImages } from "./filterSkusWithImages.js";
 import { importSkuGroup } from "../import.js";
 import { ImportSkuGroupOptions } from "../options.js";
@@ -21,16 +20,6 @@ export async function importFile(params: {
 
   const { filtered: skuGroupWithImages, skipped } =
     filterSkusWithImages(params.skuGroup);
-
-  if (isExcludedSupermodel(String(params.skuGroup.itemGroupId))) {
-    console.info(
-      `Skipping excluded SKU Group itemGroupId=${params.skuGroup.itemGroupId} from file: ${params.label}`,
-    );
-    return {
-      imported: false,
-      durationMs: Date.now() - startTime,
-    };
-  }
 
   if (skipped > 0) {
     console.info(`Skipping ${skipped} SKU(s) without images for file: ${params.label}`);

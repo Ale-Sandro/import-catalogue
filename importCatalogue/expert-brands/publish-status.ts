@@ -1,8 +1,6 @@
 import { getEnvironments } from "../contentstack/api.js";
-import { Environment } from "../contentstack/types.js";
 
 import { PublishDetails } from "./contentstack.types.js";
-import { BrandsLocale } from "./types.js";
 
 export type PublishAwareEntry = {
   publish_details?: PublishDetails | PublishDetails[] | null;
@@ -39,80 +37,6 @@ async function getEnvironmentUidByName(): Promise<Map<string, string>> {
   }
 
   return environmentUidByNamePromise;
-}
-
-async function resolveTargetEnvironmentIdentifiers(
-  environments: readonly Environment[],
-): Promise<Set<string>> {
-  const environmentUidByName = await getEnvironmentUidByName();
-  const resolved = new Set<string>();
-
-  for (const environment of environments) {
-    const normalizedName = String(environment).toLowerCase();
-    resolved.add(normalizedName);
-
-    const resolvedUid = environmentUidByName.get(normalizedName);
-    if (resolvedUid) {
-      resolved.add(resolvedUid.toLowerCase());
-    }
-  }
-
-  return resolved;
-}
-
-export async function isPublishedForTargets(
-  entry: PublishAwareEntry | undefined,
-  locale: BrandsLocale,
-  environments: readonly Environment[],
-): Promise<boolean> {
-  const targetLocale = locale.toLowerCase();
-  const targetEnvironmentIdentifiers =
-    await resolveTargetEnvironmentIdentifiers(environments);
-
-  return normalizePublishDetails(entry?.publish_details).some((detail) => {
-    return (
-      targetEnvironmentIdentifiers.has(
-        String(detail.environment).toLowerCase(),
-      ) && String(detail.locale).toLowerCase() === targetLocale
-    );
-  });
-}
-
-export async function buildPublishDebugSnapshot(
-  entry: PublishAwareEntry | undefined,
-  locale: BrandsLocale,
-  environments: readonly Environment[],
-) {
-  const publishDetails = normalizePublishDetails(entry?.publish_details).map(
-    (detail) => ({
-      environment: String(detail.environment),
-      locale: String(detail.locale),
-      time: String(detail.time),
-      user: String(detail.user),
-    }),
-  );
-
-  return {
-    targetLocale: locale,
-    targetEnvironments: [...environments],
-    targetEnvironmentIdentifiers: Array.from(
-      await resolveTargetEnvironmentIdentifiers(environments),
-    ),
-    publishDetails,
-    isPublishedForTargets: await isPublishedForTargets(
-      entry,
-      locale,
-      environments,
-    ),
-    isPublishedAnywhere:
-      normalizePublishDetails(entry?.publish_details).length > 0,
-  };
-}
-
-export function isPublishedAnywhere(
-  entry: PublishAwareEntry | undefined,
-): boolean {
-  return normalizePublishDetails(entry?.publish_details).length > 0;
 }
 
 export async function getPublishedEnvironmentNames(
