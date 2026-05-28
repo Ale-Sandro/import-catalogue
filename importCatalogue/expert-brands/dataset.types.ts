@@ -37,6 +37,7 @@ export type DatasetSku = {
   description: string | null;
   title: string;
   price: number | null;
+  isOutOfStock?: boolean | null;
   tags?: string[] | null;
   tag?: string | null;
 };

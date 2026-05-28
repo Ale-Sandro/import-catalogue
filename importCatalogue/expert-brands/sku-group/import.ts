@@ -19,19 +19,32 @@ export async function importSkuGroup(
   const existingTags = new Set(
     (existingSkuGroup?.tags ?? []).map((tag) => String(tag).toLowerCase()),
   );
-  const shouldKeepUnpublished = existingTags.has("unpublished");
+  const keepUnpublishedReasons = new Set<string>();
+  if (existingTags.has("unpublished")) {
+    keepUnpublishedReasons.add("contentstack_tag_unpublished");
+  }
+  if (options?.keepUnpublishedReason) {
+    keepUnpublishedReasons.add(options.keepUnpublishedReason);
+  }
+  const shouldKeepUnpublished =
+    options?.keepUnpublished === true || keepUnpublishedReasons.size > 0;
+  const keepUnpublishedReason =
+    Array.from(keepUnpublishedReasons.values()).join(", ") || "manual";
 
   console.info("[CS] SKU_GROUP publication mode", {
     modelId: skuGroup.id,
     itemGroupId: skuGroup.itemGroupId,
     locale,
-    mode: shouldKeepUnpublished ? "unpublished(tag)" : "publish",
+    mode: shouldKeepUnpublished
+      ? `unpublished(${keepUnpublishedReason})`
+      : "publish",
     contentstackTags: Array.from(existingTags.values()),
   });
 
   const skuGroupEntry = await buildEntry(skuGroup, locale, {
     ...options,
     keepUnpublished: shouldKeepUnpublished,
+    keepUnpublishedReason,
   });
 
   if (existingSkuGroup && existingSkuGroupResult?.localizedMatch) {
@@ -68,6 +81,7 @@ export async function importSkuGroup(
       existingSkuGroup,
       savedEntry: savedEntry.entry,
       locale,
+      reason: keepUnpublishedReason,
     });
     return savedEntry.entry;
   }

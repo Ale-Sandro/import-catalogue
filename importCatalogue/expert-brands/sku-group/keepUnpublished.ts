@@ -7,6 +7,7 @@ export async function keepUnpublished(params: {
   existingSkuGroup: (SkuGroup & PublishAwareEntry) | undefined;
   savedEntry: { uid: string; _version: number; locale: string; title: string };
   locale: BrandsLocale;
+  reason: string;
 }) {
   const publishedEnvironmentNames = await getPublishedEnvironmentNames(
     params.existingSkuGroup,
@@ -23,23 +24,25 @@ export async function keepUnpublished(params: {
       [params.locale],
     );
     console.info(
-      "[CS] unpublished SKU_GROUP because it is tagged unpublished",
+      "[CS] unpublished SKU_GROUP because it must stay unpublished",
       {
         uid: params.savedEntry.uid,
         title: params.savedEntry.title,
         locale: params.locale,
         environments: environmentsToUnpublish,
+        reason: params.reason,
       },
     );
     return;
   }
 
   console.info(
-    "[CS] kept SKU_GROUP unpublished because it is tagged unpublished",
+    "[CS] kept SKU_GROUP unpublished",
     {
       uid: params.savedEntry.uid,
       title: params.savedEntry.title,
       locale: params.locale,
+      reason: params.reason,
     },
   );
 }

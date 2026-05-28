@@ -33,6 +33,7 @@ export async function importSku(
       existingSku,
       savedEntry: savedEntry.entry,
       locale,
+      reason: options.keepUnpublishedReason ?? "parent_keep_unpublished",
     });
     return savedEntry.entry;
   }

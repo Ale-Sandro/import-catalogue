@@ -57,6 +57,7 @@ type ParsedSku = {
   colors: ParsedColor[] | null;
   locale: string;
   price: number | null;
+  isOutOfStock: boolean | null;
 };
 
 type ParsedSkuGroup = {
@@ -86,6 +87,7 @@ type LogicalColumn =
   | "images"
   | "colors"
   | "price"
+  | "isOutOfStock"
   | "itemGroupId"
   | "varianceCode"
   | "brand"
@@ -160,6 +162,7 @@ const LOGICAL_COLUMNS: LogicalColumn[] = [
   "images",
   "colors",
   "price",
+  "isOutOfStock",
   "itemGroupId",
   "varianceCode",
   "brand",
@@ -189,6 +192,7 @@ const PORTABLE_COLUMNS: Record<LogicalColumn, string | null> = {
   images: "images",
   colors: "generic_color_details",
   price: "price",
+  isOutOfStock: "is_out_of_stock",
   itemGroupId: "item_group_id",
   varianceCode: "variance_code",
   brand: "brand",
@@ -998,6 +1002,31 @@ function parseCategories(raw: string): string[] | null {
   return normalizeArray(categories);
 }
 
+function parseIsOutOfStock(
+  raw: string,
+  row: number,
+  errors: ParseError[],
+): boolean | null {
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+
+  errors.push({
+    row,
+    column: "is_out_of_stock",
+    message: "Unsupported is_out_of_stock value.",
+    value: raw,
+  });
+  return null;
+}
+
 function parsePrice(
   raw: string,
   row: number,
@@ -1239,6 +1268,11 @@ function processBucketRow(
     colors: parseColors(getValue("colors"), rowNumber, state.errorSink),
     locale: state.outputLocale,
     price: parsePrice(getValue("price"), rowNumber, skuCode, state.errorSink),
+    isOutOfStock: parseIsOutOfStock(
+      getValue("isOutOfStock"),
+      rowNumber,
+      state.errorSink,
+    ),
   };
 
   let group = groups.get(skuGroupId);

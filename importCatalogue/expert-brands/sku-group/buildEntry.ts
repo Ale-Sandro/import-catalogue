@@ -19,11 +19,13 @@ export async function buildEntry(
     try {
       return await importSku(sku, skuGroup, locale, {
         keepUnpublished: options?.keepUnpublished,
+        keepUnpublishedReason: options?.keepUnpublishedReason,
       });
     } catch {
       console.info(`Retry import SKU ${sku.skuId} for SKU Group ${skuGroup.id}`);
       return importSku(sku, skuGroup, locale, {
         keepUnpublished: options?.keepUnpublished,
+        keepUnpublishedReason: options?.keepUnpublishedReason,
       });
     }
   };
@@ -43,7 +45,10 @@ export async function buildEntry(
     );
   }
 
-  if (!savedSkus.length || !savedSkus[0]?.uid) {
+  const representativeSku =
+    savedSkus.find((sku) => sku.images && sku.images.length > 0) ?? savedSkus[0];
+
+  if (!representativeSku?.uid) {
     throw new Error(`No representative SKU saved for group ${skuGroup.id}`);
   }
 
@@ -69,7 +74,7 @@ export async function buildEntry(
     })),
     representative_sku: [
       {
-        uid: savedSkus[0].uid,
+        uid: representativeSku.uid,
         _content_type_uid: "sku",
       },
     ],
@@ -93,7 +98,7 @@ export async function buildEntry(
       picto: benefit.picto ? String(benefit.picto) : "",
     })),
     price: firstPricedSku?.price ?? undefined,
-    images: savedSkus[0].images?.map((image) => ({
+    images: representativeSku.images?.map((image) => ({
       pixl_url: image.pixl_url,
       alt: image.alt,
       focal_point: "center",
