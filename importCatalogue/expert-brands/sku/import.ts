@@ -28,12 +28,24 @@ export async function importSku(
     throw savedEntry;
   }
 
-  if (options?.keepUnpublished) {
+  const keepUnpublishedReasons = new Set<string>();
+  if (options?.keepUnpublishedReason) {
+    keepUnpublishedReasons.add(options.keepUnpublishedReason);
+  }
+  if (sku.isOutOfStock === true) {
+    keepUnpublishedReasons.add("sku_out_of_stock");
+  }
+  const shouldKeepUnpublished =
+    options?.keepUnpublished === true || keepUnpublishedReasons.size > 0;
+  const keepUnpublishedReason =
+    Array.from(keepUnpublishedReasons.values()).join(", ") || "manual";
+
+  if (shouldKeepUnpublished) {
     await keepUnpublished({
       existingSku,
       savedEntry: savedEntry.entry,
       locale,
-      reason: options.keepUnpublishedReason ?? "parent_keep_unpublished",
+      reason: keepUnpublishedReason,
     });
     return savedEntry.entry;
   }

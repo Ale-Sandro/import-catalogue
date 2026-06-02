@@ -30,23 +30,47 @@ export async function buildEntry(
     }
   };
 
-  const savedSkus: Awaited<ReturnType<typeof importSkuWithRetry>>[] = [];
+  const savedSkuRecords: {
+    sourceSku: DatasetSkuGroup["skus"][number];
+    savedSku: Awaited<ReturnType<typeof importSkuWithRetry>>;
+  }[] = [];
   if (options?.reduceBurst) {
     for (let index = 0; index < skuGroup.skus.length; index += 1) {
       const sku = skuGroup.skus[index];
-      savedSkus.push(await importSkuWithRetry(sku));
+      savedSkuRecords.push({
+        sourceSku: sku,
+        savedSku: await importSkuWithRetry(sku),
+      });
       if (index < skuGroup.skus.length - 1) {
         await sleep(REDUCE_BURST_DELAY_MS);
       }
     }
   } else {
-    savedSkus.push(
-      ...(await Promise.all(skuGroup.skus.map((sku) => importSkuWithRetry(sku)))),
+    savedSkuRecords.push(
+      ...(await Promise.all(
+        skuGroup.skus.map(async (sku) => ({
+          sourceSku: sku,
+          savedSku: await importSkuWithRetry(sku),
+        })),
+      )),
     );
   }
 
+  const savedSkus = savedSkuRecords.map((record) => record.savedSku);
   const representativeSku =
-    savedSkus.find((sku) => sku.images && sku.images.length > 0) ?? savedSkus[0];
+    savedSkuRecords.find(
+      (record) =>
+        record.sourceSku.isOutOfStock !== true
+        && record.savedSku.images
+        && record.savedSku.images.length > 0,
+    )?.savedSku
+    ?? savedSkuRecords.find(
+      (record) => record.savedSku.images && record.savedSku.images.length > 0,
+    )?.savedSku
+    ?? savedSkuRecords.find(
+      (record) => record.sourceSku.isOutOfStock !== true,
+    )?.savedSku
+    ?? savedSkuRecords[0]?.savedSku;
 
   if (!representativeSku?.uid) {
     throw new Error(`No representative SKU saved for group ${skuGroup.id}`);
@@ -57,9 +81,17 @@ export async function buildEntry(
     term_uid: normalizeCategory(category),
   })) ?? [];
   const brandTerm = buildBrandTerm(skuGroup.brand);
-  const firstPricedSku = savedSkus.find(
-    (sku) => sku.price !== null && sku.price !== undefined,
-  );
+  const firstPricedSku =
+    savedSkuRecords.find(
+      (record) =>
+        record.sourceSku.isOutOfStock !== true
+        && record.savedSku.price !== null
+        && record.savedSku.price !== undefined,
+    )?.savedSku
+    ?? savedSkuRecords.find(
+      (record) =>
+        record.savedSku.price !== null && record.savedSku.price !== undefined,
+    )?.savedSku;
 
   return {
     model_id: skuGroup.id,
