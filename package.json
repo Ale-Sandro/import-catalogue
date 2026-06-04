@@ -5,7 +5,8 @@
   "scripts": {
     "import:brands:product": "tsx --env-file=.env.local ./importCatalogue/expert-brands/sku-group/main.ts",
     "import:brands:product:diff": "tsx ./importCatalogue/expert-brands/sku-group/checkDiff.ts",
-    "import:brands:catalogue:parse": "tsx ./parseCsv/main.ts"
+    "import:brands:catalogue:parse": "tsx ./parseCsv/main.ts",
+    "sync:brands:product": "tsx ./syncCatalogue/main.ts"
   },
   "dependencies": {
     "yargs": "^17.7.2"

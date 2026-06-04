@@ -46,6 +46,7 @@ export type DatasetSkuGroup = {
   id: string;
   title: string;
   skus: DatasetSku[];
+  productNatureId?: string | null;
   varianceCode: string;
   brand: string;
   localeAvailability: BrandsLocaleInput[];

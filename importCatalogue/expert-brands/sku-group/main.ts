@@ -11,18 +11,19 @@ import { updateLatest } from "./diff/updateLatest.js";
 import { getChangedPath } from "./diff/getChangedPath.js";
 import { getReportPath } from "./diff/getReportPath.js";
 import { importFile } from "./tasks/importFile.js";
+import { processRemovedGroup } from "./tasks/processRemovedGroup.js";
 import { formatError } from "./report/formatError.js";
 import { recordError } from "./report/recordError.js";
 import { saveReport } from "./report/saveReport.js";
 import { DatasetSkuGroup } from "../dataset.types.js";
-import { filterExcludedGroups } from "./exclusions/filterGroups.js";
+import { applyBrandRulesToGroups } from "./brands/index.js";
 
 const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
 (async () => {
   const args = yargs(rawCliArgs).parseSync() as Record<string, unknown>;
   const ndjsonPath = getNdjsonPath(args);
-  const latestPath = getLatestPath(args);
+  const latestPath = getLatestPath(args, ndjsonPath);
   const changedPath = String(
     args["changed-ndjson-path"] ??
       args.changedNdjsonPath ??
@@ -52,9 +53,9 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
   const rawCurrentGroups = readNdjson<DatasetSkuGroup>(ndjsonPath);
   const { includedGroups: importableGroups, excludedGroups } =
-    filterExcludedGroups(rawCurrentGroups);
+    applyBrandRulesToGroups(rawCurrentGroups, localeOverride);
 
-  const { changedGroups, currentGroups, report } = runDiff({
+  const { changedGroups, currentGroups, removedGroups, report } = runDiff({
     currentGroups: importableGroups,
     currentPath: ndjsonPath,
     latestPath,
@@ -162,6 +163,30 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
           missingTaxonomyByFile,
         });
       }
+    }
+  }
+
+  for (const [index, skuGroup] of removedGroups.entries()) {
+    const label = `${localeToken}_${skuGroup.id}_removed.ndjson`;
+
+    try {
+      await processRemovedGroup({
+        index,
+        total: removedGroups.length,
+        label,
+        skuGroup,
+        locale: localeOverride,
+      });
+    } catch (error) {
+      console.error(formatError(label, error, "final"));
+      recordError({
+        fileName: label,
+        err: error,
+        phase: "final",
+        importErrors,
+        missingTaxonomyTerms,
+        missingTaxonomyByFile,
+      });
     }
   }
 

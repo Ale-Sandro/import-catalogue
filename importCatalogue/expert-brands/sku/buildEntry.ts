@@ -8,15 +8,19 @@ export function buildEntry(
   sku: DatasetSku,
   skuGroup: DatasetSkuGroup,
 ): EntryInput<Sku> {
+  const images = sku.productImages
+    ? sku.productImages.map((image) => ({
+        pixl_url: image.pixlUrl,
+        alt: image.alt,
+        focal_point: "center" as const,
+      }))
+    : [];
+
   return {
     title: sku.title,
     sku_id: sku.skuId,
     sku_code: sku.skuCode,
-    images: sku.productImages?.map((image) => ({
-      pixl_url: image.pixlUrl,
-      alt: image.alt,
-      focal_point: "center",
-    })),
+    images,
     size_label: sku.sizeLabel || "",
     colors: sku.colors?.map((color) => ({
       color_id: String(color.id),

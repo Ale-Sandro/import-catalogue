@@ -8,14 +8,14 @@ import { getLatestPath } from "./getLatestPath.js";
 import { getLocaleConfig } from "./getLocaleConfig.js";
 import { getNdjsonPath } from "./getNdjsonPath.js";
 import { DatasetSkuGroup } from "../dataset.types.js";
-import { filterExcludedGroups } from "./exclusions/filterGroups.js";
+import { applyBrandRulesToGroups } from "./brands/index.js";
 
 const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
 (async () => {
   const args = yargs(rawCliArgs).parseSync() as Record<string, unknown>;
   const ndjsonPath = getNdjsonPath(args);
-  const latestPath = getLatestPath(args);
+  const latestPath = getLatestPath(args, ndjsonPath);
   const changedPath = String(
     args["changed-ndjson-path"] ??
       args.changedNdjsonPath ??
@@ -29,7 +29,7 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
   const { localeToken, localeOverride } = getLocaleConfig(ndjsonPath);
   const rawCurrentGroups = readNdjson<DatasetSkuGroup>(ndjsonPath);
   const { includedGroups: currentGroups, excludedGroups } =
-    filterExcludedGroups(rawCurrentGroups);
+    applyBrandRulesToGroups(rawCurrentGroups, localeOverride);
 
   const { report } = runDiff({
     currentGroups,

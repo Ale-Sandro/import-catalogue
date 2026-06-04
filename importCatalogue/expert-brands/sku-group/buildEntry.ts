@@ -20,57 +20,80 @@ export async function buildEntry(
       return await importSku(sku, skuGroup, locale, {
         keepUnpublished: options?.keepUnpublished,
         keepUnpublishedReason: options?.keepUnpublishedReason,
+        requireExisting: options?.requireExisting,
       });
     } catch {
       console.info(`Retry import SKU ${sku.skuId} for SKU Group ${skuGroup.id}`);
       return importSku(sku, skuGroup, locale, {
         keepUnpublished: options?.keepUnpublished,
         keepUnpublishedReason: options?.keepUnpublishedReason,
+        requireExisting: options?.requireExisting,
       });
     }
   };
 
+  type SavedSku = NonNullable<Awaited<ReturnType<typeof importSkuWithRetry>>>;
+
   const savedSkuRecords: {
     sourceSku: DatasetSkuGroup["skus"][number];
-    savedSku: Awaited<ReturnType<typeof importSkuWithRetry>>;
+    savedSku: SavedSku;
   }[] = [];
   if (options?.reduceBurst) {
     for (let index = 0; index < skuGroup.skus.length; index += 1) {
       const sku = skuGroup.skus[index];
-      savedSkuRecords.push({
-        sourceSku: sku,
-        savedSku: await importSkuWithRetry(sku),
-      });
+      const savedSku = await importSkuWithRetry(sku);
+      if (savedSku) {
+        savedSkuRecords.push({
+          sourceSku: sku,
+          savedSku,
+        });
+      }
       if (index < skuGroup.skus.length - 1) {
         await sleep(REDUCE_BURST_DELAY_MS);
       }
     }
   } else {
+    const settledSkuRecords = await Promise.all(
+      skuGroup.skus.map(async (sku) => ({
+        sourceSku: sku,
+        savedSku: await importSkuWithRetry(sku),
+      })),
+    );
     savedSkuRecords.push(
-      ...(await Promise.all(
-        skuGroup.skus.map(async (sku) => ({
-          sourceSku: sku,
-          savedSku: await importSkuWithRetry(sku),
-        })),
-      )),
+      ...settledSkuRecords.filter(
+        (
+          record,
+        ): record is {
+          sourceSku: DatasetSkuGroup["skus"][number];
+          savedSku: SavedSku;
+        } => record.savedSku !== null,
+      ),
     );
   }
 
+  if (!savedSkuRecords.length) {
+    throw new Error(`No existing SKU could be updated for group ${skuGroup.id}`);
+  }
+
   const savedSkus = savedSkuRecords.map((record) => record.savedSku);
-  const representativeSku =
+  const representativeSkuRecord =
     savedSkuRecords.find(
       (record) =>
         record.sourceSku.isOutOfStock !== true
-        && record.savedSku.images
-        && record.savedSku.images.length > 0,
-    )?.savedSku
+        && record.sourceSku.productImages
+        && record.sourceSku.productImages.length > 0,
+    )
     ?? savedSkuRecords.find(
-      (record) => record.savedSku.images && record.savedSku.images.length > 0,
-    )?.savedSku
+      (record) =>
+        record.sourceSku.productImages && record.sourceSku.productImages.length > 0,
+    )
     ?? savedSkuRecords.find(
       (record) => record.sourceSku.isOutOfStock !== true,
-    )?.savedSku
-    ?? savedSkuRecords[0]?.savedSku;
+    )
+    ?? savedSkuRecords[0];
+
+  const representativeSku = representativeSkuRecord?.savedSku;
+  const representativeSkuImages = representativeSkuRecord?.sourceSku.productImages ?? [];
 
   if (!representativeSku?.uid) {
     throw new Error(`No representative SKU saved for group ${skuGroup.id}`);
@@ -130,8 +153,8 @@ export async function buildEntry(
       picto: benefit.picto ? String(benefit.picto) : "",
     })),
     price: firstPricedSku?.price ?? undefined,
-    images: representativeSku.images?.map((image) => ({
-      pixl_url: image.pixl_url,
+    images: representativeSkuImages.map((image) => ({
+      pixl_url: image.pixlUrl,
       alt: image.alt,
       focal_point: "center",
     })),

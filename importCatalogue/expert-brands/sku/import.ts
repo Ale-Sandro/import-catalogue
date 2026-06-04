@@ -16,6 +16,16 @@ export async function importSku(
   const existingSkuResult = await findExisting(locale, sku.skuId);
   const existingSku = existingSkuResult?.entry;
 
+  if (options?.requireExisting && !existingSku) {
+    console.info("[CS] skipping SKU because it does not exist for update-only flow", {
+      skuId: sku.skuId,
+      title: sku.title,
+      locale,
+      skuGroupId: skuGroup.id,
+    });
+    return null;
+  }
+
   const skuEntry = buildEntry(sku, skuGroup);
 
   const savedEntry = await save({

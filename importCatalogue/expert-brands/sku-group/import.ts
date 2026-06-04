@@ -16,6 +16,19 @@ export async function importSkuGroup(
 ) {
   const existingSkuGroupResult = await findExisting(locale, skuGroup.id);
   const existingSkuGroup = existingSkuGroupResult?.entry;
+
+  if (options?.requireExisting && !existingSkuGroup) {
+    console.info(
+      "[CS] skipping SKU_GROUP because it does not exist for update-only flow",
+      {
+        modelId: skuGroup.id,
+        itemGroupId: skuGroup.itemGroupId,
+        locale,
+      },
+    );
+    return null;
+  }
+
   const existingTags = new Set(
     (existingSkuGroup?.tags ?? []).map((tag) => String(tag).toLowerCase()),
   );

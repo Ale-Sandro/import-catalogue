@@ -15,6 +15,7 @@ export function runDiff(params: {
 }): {
   changedGroups: DatasetSkuGroup[];
   currentGroups: DatasetSkuGroup[];
+  removedGroups: DatasetSkuGroup[];
   report: SkuGroupDiffReport;
 } {
   const currentGroups = params.currentGroups;
@@ -33,6 +34,7 @@ export function runDiff(params: {
   );
   const currentIds = new Set<string>();
   const changedGroups: DatasetSkuGroup[] = [];
+  const removedGroups: DatasetSkuGroup[] = [];
   const entries: SkuGroupDiffReport["entries"] = [];
 
   for (const currentGroup of currentGroups) {
@@ -58,6 +60,7 @@ export function runDiff(params: {
   for (const latestGroup of latestGroups) {
     const latestId = String(latestGroup.id);
     if (!currentIds.has(latestId)) {
+      removedGroups.push(latestGroup);
       entries.push({
         ...getIdentifier(latestGroup),
         status: "removed",
@@ -93,6 +96,7 @@ export function runDiff(params: {
   return {
     changedGroups,
     currentGroups,
+    removedGroups,
     report,
   };
 }

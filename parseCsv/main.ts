@@ -63,6 +63,7 @@ type ParsedSku = {
 type ParsedSkuGroup = {
   id: string;
   itemGroupId: string | null;
+  productNatureId: string | null;
   varianceCode: string | null;
   title: string;
   brand: string | null;
@@ -89,6 +90,7 @@ type LogicalColumn =
   | "price"
   | "isOutOfStock"
   | "itemGroupId"
+  | "productNatureId"
   | "varianceCode"
   | "brand"
   | "catchline"
@@ -164,6 +166,7 @@ const LOGICAL_COLUMNS: LogicalColumn[] = [
   "price",
   "isOutOfStock",
   "itemGroupId",
+  "productNatureId",
   "varianceCode",
   "brand",
   "catchline",
@@ -194,6 +197,7 @@ const PORTABLE_COLUMNS: Record<LogicalColumn, string | null> = {
   price: "price",
   isOutOfStock: "is_out_of_stock",
   itemGroupId: "item_group_id",
+  productNatureId: "product_nature_id",
   varianceCode: "variance_code",
   brand: "brand",
   catchline: "catchline",
@@ -1280,6 +1284,7 @@ function processBucketRow(
     group = {
       id: groupId,
       itemGroupId,
+      productNatureId: getValue("productNatureId").trim() || null,
       varianceCode: getValue("varianceCode").trim() || null,
       title,
       brand: parseBrand(getValue("brand"), rowNumber, state.errorSink),
@@ -1331,6 +1336,9 @@ function processBucketRow(
     }
     if (!group.categories?.length) {
       group.categories = parseCategories(getValue("categories"));
+    }
+    if (!group.productNatureId) {
+      group.productNatureId = getValue("productNatureId").trim() || null;
     }
   }
 

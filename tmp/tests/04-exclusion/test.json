@@ -1,0 +1,43 @@
+{
+  "id": "9012800",
+  "title": "Cuissard court de vélo de route homme, RCR-R 5 LTD Meadow Mirage",
+  "skus": [
+    {
+      "skuId": "986c4a3a-193d-4557-8894-9d7489a47e88",
+      "skuCode": "5887799",
+      "locale": "fr",
+      "productImages": [
+        {
+          "type": "jpg",
+          "pixlUrl": "https://contents.mediadecathlon.com/p3159095/k$8d42eddc7837658b881e9c6ba37ebcc6/picture.jpg",
+          "alt": "Cuissard court de vélo de route homme, RCR-R 5 LTD Meadow Mirage"
+        }
+      ],
+      "contextImages": null,
+      "sizeLabel": "S",
+      "colors": [{ "id": "3", "hexa": "#FFFFFF", "label": "blanc" }],
+      "designedFor": "Conçu pour les cyclistes exigeants a la recherche de performance par temps chaud 15- 35°C",
+      "description": "Conçu pour les cyclistes exigeants a la recherche de performance par temps chaud 15- 35°C",
+      "title": "Cuissard court de vélo de route homme, RCR-R 5 LTD Meadow Mirage",
+      "price": 69.99,
+      "isOutOfStock": true
+    }
+  ],
+  "productNatureId": "10284",
+  "varianceCode": "c4m9012800",
+  "brand": "van_rysel",
+  "localeAvailability": ["fr"],
+  "itemGroupId": "365624",
+  "catchline": "Repoussez vos limites avec le cuissard RCR-R. Léger, respirant et sans coutures internes, sa coupe Pro Fit et sa peau Elastic Interface vous offrent une performance sans compromis.",
+  "variantType": "size",
+  "ranking": 1,
+  "notice": null,
+  "categories": [],
+  "url": "p/cuissard-court-de-velo-de-route-homme-rcr-r-5-ltd-meadow-mirage/365624/c4m9012800",
+  "slug": "cuissard-court-de-velo-de-route-homme-rcr-r-5-ltd-meadow-mirage",
+  "weight": null,
+  "garantee": null,
+  "functionalities": null,
+  "materialAndCare": null,
+  "benefits": null
+}
