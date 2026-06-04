@@ -22,3 +22,8 @@ pnpm-debug.log*
 
 # macOS
 .DS_Store
+
+# Runtime inputs / outputs
+parseCsv/csv/*.csv
+parseCsv/output/**
+importCatalogue/expert-brands/sku-group/output/**

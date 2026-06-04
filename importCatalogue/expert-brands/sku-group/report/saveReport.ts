@@ -10,11 +10,8 @@ export function saveReport(params: {
   }>;
   missingTaxonomyTerms: Map<string, Set<string>>;
   missingTaxonomyByFile: Map<string, Set<string>>;
+  summary?: Record<string, unknown>;
 }) {
-  if (!params.importErrors.length && params.missingTaxonomyTerms.size === 0) {
-    return;
-  }
-
   mkdirSync(path.dirname(params.reportPath), { recursive: true });
 
   const errorsPayload = params.importErrors.map((error) => ({
@@ -35,6 +32,7 @@ export function saveReport(params: {
 
   const reportPayload = {
     generatedAt: new Date().toISOString(),
+    summary: params.summary ?? {},
     errors: errorsPayload,
     missingTaxonomies: missingTaxonomiesPayload,
   };
@@ -45,4 +43,6 @@ export function saveReport(params: {
     "utf-8",
   );
   console.info(`Import report saved to ${params.reportPath}`);
+
+  return reportPayload;
 }

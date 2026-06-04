@@ -15,6 +15,10 @@ import { fileURLToPath } from "node:url";
 import yargs from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
 import { normalizeBrandTermUid } from "../importCatalogue/expert-brands/brandTerm.js";
+import {
+  archiveFileToHistory,
+  createHistoryRunLabel,
+} from "../importCatalogue/expert-brands/shared/history.js";
 
 // ============================================================================
 // Types
@@ -1467,10 +1471,17 @@ async function run() {
   };
 
   writeFileSync(reportPath, JSON.stringify(report, null, 2), "utf-8");
+  const historyRunLabel = createHistoryRunLabel();
+  const historyDumpPath = archiveFileToHistory(dumpPath, historyRunLabel);
+  const historyReportPath = archiveFileToHistory(reportPath, historyRunLabel);
 
   console.info("[importCatalogue] parse summary", report.summary);
   console.info("[importCatalogue] report saved", reportPath);
   console.info("[importCatalogue] dump saved", dumpPath);
+  console.info("[importCatalogue] history artifacts saved", {
+    reportPath: historyReportPath,
+    dumpPath: historyDumpPath,
+  });
 }
 
 // Execution avec message clair en cas d'echec.

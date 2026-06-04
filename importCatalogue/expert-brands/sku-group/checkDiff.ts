@@ -9,6 +9,10 @@ import { getLocaleConfig } from "./getLocaleConfig.js";
 import { getNdjsonPath } from "./getNdjsonPath.js";
 import { DatasetSkuGroup } from "../dataset.types.js";
 import { applyBrandRulesToGroups } from "./brands/index.js";
+import {
+  archiveFileToHistory,
+  createHistoryRunLabel,
+} from "../shared/history.js";
 
 const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
@@ -38,6 +42,12 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
     changedPath,
     reportPath: diffReportPath,
   });
+  const historyRunLabel = createHistoryRunLabel();
+  const historyChangedPath = archiveFileToHistory(changedPath, historyRunLabel);
+  const historyDiffReportPath = archiveFileToHistory(
+    diffReportPath,
+    historyRunLabel,
+  );
 
   console.info("[importCatalogue] diff completed", {
     ndjsonPath,
@@ -49,6 +59,8 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
     rawSkuGroups: rawCurrentGroups.length,
     excludedSkuGroups: excludedGroups.length,
     importableSkuGroups: currentGroups.length,
+    historyChangedPath,
+    historyDiffReportPath,
   });
   console.info("[importCatalogue] diff summary", report.summary);
 })().catch((error) => {

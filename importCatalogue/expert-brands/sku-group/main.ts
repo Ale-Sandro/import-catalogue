@@ -17,6 +17,10 @@ import { recordError } from "./report/recordError.js";
 import { saveReport } from "./report/saveReport.js";
 import { DatasetSkuGroup } from "../dataset.types.js";
 import { applyBrandRulesToGroups } from "./brands/index.js";
+import {
+  archiveFileToHistory,
+  createHistoryRunLabel,
+} from "../shared/history.js";
 
 const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
@@ -62,6 +66,12 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
     changedPath,
     reportPath: diffReportPath,
   });
+  const historyRunLabel = createHistoryRunLabel();
+  const historyChangedPath = archiveFileToHistory(changedPath, historyRunLabel);
+  const historyDiffReportPath = archiveFileToHistory(
+    diffReportPath,
+    historyRunLabel,
+  );
 
   console.info("[importCatalogue] import source", {
     ndjsonPath,
@@ -75,6 +85,8 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
     excludedSkuGroups: excludedGroups.length,
     importableSkuGroups: importableGroups.length,
     reduceBurst,
+    historyChangedPath,
+    historyDiffReportPath,
   });
   console.info("[importCatalogue] diff summary", report.summary);
 
@@ -191,11 +203,34 @@ const rawCliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
   }
 
   console.info("All tasks completed.");
-  saveReport({
+  const importReport = saveReport({
     reportPath: importReportPath,
     importErrors,
     missingTaxonomyTerms,
     missingTaxonomyByFile,
+    summary: {
+      locale: localeOverride,
+      ndjsonPath,
+      latestPath,
+      changedPath,
+      diffReportPath,
+      rawSkuGroups: rawCurrentGroups.length,
+      excludedSkuGroups: excludedGroups.length,
+      importableSkuGroups: importableGroups.length,
+      changedSkuGroups: changedGroups.length,
+      removedSkuGroups: removedGroups.length,
+      importedSkuGroups: countImportedSkuGroups,
+    },
+  });
+  const historyImportReportPath = archiveFileToHistory(
+    importReportPath,
+    historyRunLabel,
+  );
+  console.info("[importCatalogue] history artifacts saved", {
+    changedPath: historyChangedPath,
+    diffReportPath: historyDiffReportPath,
+    importReportPath: historyImportReportPath,
+    reportSummary: importReport?.summary ?? {},
   });
 
   if (importErrors.length === 0) {
