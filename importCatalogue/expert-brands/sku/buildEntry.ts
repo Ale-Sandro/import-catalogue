@@ -30,7 +30,7 @@ export function buildEntry(
     designed_for: sku.designedFor || undefined,
     catchline: skuGroup.catchline || undefined,
     description: sku.description || undefined,
-    price: sku.price || undefined,
+    price: sku.price ?? null,
     tags: buildTags(sku),
     taxonomies: [buildBrandTerm(skuGroup.brand)],
   };

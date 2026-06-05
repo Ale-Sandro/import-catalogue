@@ -1,12 +1,15 @@
 import { DatasetSkuGroup } from "../../dataset.types.js";
 import { BrandsLocale } from "../../types.js";
-import { shouldExcludeKiprunSkuGroup } from "../exclusions/kiprun.js";
+
+export const kiprunExcludedItemGroupIds: readonly string[] = [];
+
+const kiprunExcludedItemGroupIdsSet = new Set(kiprunExcludedItemGroupIds);
 
 export function applyKiprunRules(
   skuGroup: DatasetSkuGroup,
   _locale: BrandsLocale,
 ): DatasetSkuGroup | null {
-  if (shouldExcludeKiprunSkuGroup(skuGroup)) {
+  if (kiprunExcludedItemGroupIdsSet.has(String(skuGroup.itemGroupId).trim())) {
     return null;
   }
 

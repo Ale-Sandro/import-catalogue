@@ -1,7 +1,10 @@
 import { DatasetSkuGroup } from "../../dataset.types.js";
 import { normalizeTags } from "../../shared/normalizeTags.js";
 import { BrandsLocale } from "../../types.js";
-import { shouldExcludeSimondSkuGroup } from "../exclusions/simond.js";
+
+export const simondExcludedItemGroupIds: readonly string[] = [];
+
+const simondExcludedItemGroupIdsSet = new Set(simondExcludedItemGroupIds);
 
 const AGE_RESTRICTED_PRODUCT_NATURE_IDS = new Set([
   "25728",
@@ -26,7 +29,7 @@ export function applySimondRules(
   skuGroup: DatasetSkuGroup,
   locale: BrandsLocale,
 ): DatasetSkuGroup | null {
-  if (shouldExcludeSimondSkuGroup(skuGroup)) {
+  if (simondExcludedItemGroupIdsSet.has(String(skuGroup.itemGroupId).trim())) {
     return null;
   }
 

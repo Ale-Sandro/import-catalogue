@@ -36,7 +36,7 @@ export interface Sku {
   }[];
   size_label?: string;
   images?: Image[];
-  price?: number;
+  price?: number | null;
   taxonomies?: { taxonomy_uid: string; term_uid: string }[];
 }
 
@@ -68,5 +68,5 @@ export interface SkuGroup {
   }[];
   alternative_title?: string;
   images?: Image[];
-  price?: number;
+  price?: number | null;
 }

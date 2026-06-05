@@ -76,10 +76,6 @@ export async function importSkuGroup(
       )
     : await createEntry<SkuGroupInput>("sku_group", skuGroupEntry, locale);
 
-  if (savedEntry instanceof Error) {
-    throw savedEntry;
-  }
-
   console.info(
     existingSkuGroup ? "[CS] updated SKU_GROUP" : "[CS] created SKU_GROUP",
     {
@@ -109,7 +105,7 @@ export async function importSkuGroup(
     uid: savedEntry.entry.uid,
     envs: PUBLISH_ENVS,
     locale,
-    notice: published instanceof Error ? undefined : published.notice,
+    notice: published.notice,
   });
 
   return savedEntry.entry;

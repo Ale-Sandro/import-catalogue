@@ -21,10 +21,6 @@ export function normalizePublishDetails(
 async function getEnvironmentUidByName(): Promise<Map<string, string>> {
   if (!environmentUidByNamePromise) {
     environmentUidByNamePromise = getEnvironments().then((response) => {
-      if (response instanceof Error) {
-        throw response;
-      }
-
       const map = new Map<string, string>();
       for (const environment of response.environments ?? []) {
         map.set(

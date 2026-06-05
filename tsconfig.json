@@ -9,5 +9,9 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["importCatalogue/**/*.ts", "parseCsv/**/*.ts"]
+  "include": [
+    "importCatalogue/**/*.ts",
+    "parseCsv/**/*.ts",
+    "syncCatalogue/**/*.ts"
+  ]
 }

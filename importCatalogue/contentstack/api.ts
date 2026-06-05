@@ -71,7 +71,7 @@ function buildRequest(
 async function requestJson<T>(
   url: string,
   init: RequestInit,
-): Promise<T | Error> {
+): Promise<T> {
   try {
     const response = await fetch(url, init);
     const raw = await response.text();
@@ -117,12 +117,12 @@ async function requestJson<T>(
         details: error.details,
       });
 
-      return error;
+      throw error;
     }
 
     return (body ?? {}) as T;
   } catch (error) {
-    return error instanceof Error ? error : new Error(String(error));
+    throw (error instanceof Error ? error : new Error(String(error)));
   }
 }
 

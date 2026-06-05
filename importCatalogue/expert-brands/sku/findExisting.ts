@@ -19,10 +19,7 @@ export async function findExisting(
     },
   );
 
-  if (
-    !(localizedResponse instanceof Error) &&
-    localizedResponse.entries.length
-  ) {
+  if (localizedResponse.entries.length) {
     return {
       entry: localizedResponse.entries[0],
       localizedMatch: true,
@@ -41,10 +38,7 @@ export async function findExisting(
     },
   );
 
-  if (
-    !(anyLocaleResponse instanceof Error) &&
-    anyLocaleResponse.entries.length
-  ) {
+  if (anyLocaleResponse.entries.length) {
     return {
       entry: anyLocaleResponse.entries[0],
       localizedMatch: false,

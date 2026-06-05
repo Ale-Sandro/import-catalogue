@@ -152,7 +152,7 @@ export async function buildEntry(
       value: benefit.value,
       picto: benefit.picto ? String(benefit.picto) : "",
     })),
-    price: firstPricedSku?.price ?? undefined,
+    price: firstPricedSku?.price ?? null,
     images: representativeSkuImages.map((image) => ({
       pixl_url: image.pixlUrl,
       alt: image.alt,

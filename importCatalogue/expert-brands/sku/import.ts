@@ -34,10 +34,6 @@ export async function importSku(
     skuEntry,
   });
 
-  if (savedEntry instanceof Error) {
-    throw savedEntry;
-  }
-
   const keepUnpublishedReasons = new Set<string>();
   if (options?.keepUnpublishedReason) {
     keepUnpublishedReasons.add(options.keepUnpublishedReason);
